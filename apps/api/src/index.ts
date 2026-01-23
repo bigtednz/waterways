@@ -19,25 +19,38 @@ dotenv.config();
 // Seed database on startup if admin user doesn't exist
 async function ensureSeeded() {
   try {
+    console.log("Checking for admin user...");
     const adminExists = await prisma.user.findUnique({
       where: { email: "admin@waterways.com" },
     });
 
     if (!adminExists) {
-      console.log("Seeding database...");
+      console.log("Admin user not found. Creating admin user...");
       const hashedPassword = await bcrypt.hash("admin123", 10);
-      await prisma.user.create({
-        data: {
+      const admin = await prisma.user.upsert({
+        where: { email: "admin@waterways.com" },
+        update: {
+          password: hashedPassword, // Reset password if user exists but password was changed
+          role: UserRole.ADMIN,
+        },
+        create: {
           email: "admin@waterways.com",
           password: hashedPassword,
           role: UserRole.ADMIN,
           name: "Admin User",
         },
       });
-      console.log("Admin user created: admin@waterways.com / admin123");
+      console.log("✅ Admin user created/updated: admin@waterways.com / admin123");
+      console.log("Admin ID:", admin.id);
+    } else {
+      console.log("✅ Admin user already exists: admin@waterways.com");
     }
   } catch (error) {
-    console.error("Error seeding database:", error);
+    console.error("❌ Error seeding database:", error);
+    if (error instanceof Error) {
+      console.error("Error message:", error.message);
+      console.error("Error stack:", error.stack);
+    }
     // Don't fail startup if seeding fails
   }
 }
