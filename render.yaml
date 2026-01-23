@@ -1,6 +1,6 @@
 services:
   # PostgreSQL Database
-  - type: pspg
+  - type: pg
     name: waterways-db
     databaseName: waterways
     user: waterways
