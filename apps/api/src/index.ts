@@ -10,8 +10,37 @@ import { runSpecsRouter } from "./routes/runSpecs.js";
 import { penaltyRulesRouter } from "./routes/penaltyRules.js";
 import { analyticsRouter } from "./routes/analytics.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { prisma } from "@waterways/db";
+import bcrypt from "bcryptjs";
+import { UserRole } from "@prisma/client";
 
 dotenv.config();
+
+// Seed database on startup if admin user doesn't exist
+async function ensureSeeded() {
+  try {
+    const adminExists = await prisma.user.findUnique({
+      where: { email: "admin@waterways.com" },
+    });
+
+    if (!adminExists) {
+      console.log("Seeding database...");
+      const hashedPassword = await bcrypt.hash("admin123", 10);
+      await prisma.user.create({
+        data: {
+          email: "admin@waterways.com",
+          password: hashedPassword,
+          role: UserRole.ADMIN,
+          name: "Admin User",
+        },
+      });
+      console.log("Admin user created: admin@waterways.com / admin123");
+    }
+  } catch (error) {
+    console.error("Error seeding database:", error);
+    // Don't fail startup if seeding fails
+  }
+}
 
 const app = express();
 const PORT = process.env.API_PORT || 3001;
@@ -50,6 +79,9 @@ app.use("/api/analytics", analyticsRouter);
 
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`API server running on port ${PORT}`);
+// Ensure database is seeded before starting server
+ensureSeeded().then(() => {
+  app.listen(PORT, () => {
+    console.log(`API server running on port ${PORT}`);
+  });
 });
