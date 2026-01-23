@@ -26,15 +26,3 @@ services:
         generateValue: true
     healthCheckPath: /health
 
-  # Web Frontend (Static Site)
-  - type: static
-    name: waterways-web
-    buildCommand: npm install && cd apps/web && npm run build
-    staticPublishPath: apps/web/dist
-    pullRequestPreviewsEnabled: false
-    envVars:
-      - key: VITE_API_URL
-        fromService:
-          name: waterways-api
-          type: web
-          property: host
