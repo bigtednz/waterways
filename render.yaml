@@ -1,11 +1,10 @@
-services:
-  # PostgreSQL Database
-  - type: pg
-    name: waterways-db
+databases:
+  - name: waterways-db
     databaseName: waterways
     user: waterways
     plan: free
 
+services:
   # API Backend Service
   - type: web
     name: waterways-api
