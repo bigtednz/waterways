@@ -1,0 +1,40 @@
+services:
+  # PostgreSQL Database
+  - type: pspg
+    name: waterways-db
+    databaseName: waterways
+    user: waterways
+    plan: free
+
+  # API Backend Service
+  - type: web
+    name: waterways-api
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run db:generate && npm run db:migrate && cd apps/api && npm run build
+    startCommand: cd apps/api && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: waterways-db
+          property: connectionString
+      - key: API_PORT
+        value: 3001
+      - key: JWT_SECRET
+        generateValue: true
+    healthCheckPath: /health
+
+  # Web Frontend (Static Site)
+  - type: static
+    name: waterways-web
+    buildCommand: npm install && cd apps/web && npm run build
+    staticPublishPath: apps/web/dist
+    pullRequestPreviewsEnabled: false
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          name: waterways-api
+          type: web
+          property: host
