@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 import { authRouter } from "./routes/auth.js";
 import { seasonsRouter } from "./routes/seasons.js";
 import { competitionsRouter } from "./routes/competitions.js";
@@ -15,6 +17,9 @@ import bcrypt from "bcryptjs";
 import { UserRole } from "@prisma/client";
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Seed database on startup if admin user doesn't exist
 async function ensureSeeded() {
@@ -61,21 +66,24 @@ const PORT = process.env.API_PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-app.get("/", (req, res) => {
-  res.json({ 
-    message: "Waterways API",
-    version: "1.0.0",
-    endpoints: {
-      health: "/health",
-      auth: "/api/auth",
-      seasons: "/api/seasons",
-      competitions: "/api/competitions",
-      runTypes: "/api/run-types",
-      runResults: "/api/run-results",
-      analytics: "/api/analytics"
-    }
+// Development: show API info at root
+if (process.env.NODE_ENV !== "production") {
+  app.get("/", (req, res) => {
+    res.json({ 
+      message: "Waterways API",
+      version: "1.0.0",
+      endpoints: {
+        health: "/health",
+        auth: "/api/auth",
+        seasons: "/api/seasons",
+        competitions: "/api/competitions",
+        runTypes: "/api/run-types",
+        runResults: "/api/run-results",
+        analytics: "/api/analytics"
+      }
+    });
   });
-});
+}
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
@@ -123,6 +131,17 @@ app.use("/api/penalty-rules", penaltyRulesRouter);
 app.use("/api/analytics", analyticsRouter);
 
 app.use(errorHandler);
+
+// Serve static files from web app in production (must be after API routes)
+if (process.env.NODE_ENV === "production") {
+  const webDistPath = path.join(__dirname, "../../../web/dist");
+  app.use(express.static(webDistPath));
+  
+  // Serve index.html for all non-API routes (SPA fallback)
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(webDistPath, "index.html"));
+  });
+}
 
 // Ensure database is seeded before starting server
 ensureSeeded().then(() => {
