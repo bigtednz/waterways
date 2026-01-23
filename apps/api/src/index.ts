@@ -81,6 +81,38 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+// Debug endpoint to check/reset admin user (remove in production)
+app.post("/api/debug/reset-admin", async (req, res) => {
+  try {
+    const hashedPassword = await bcrypt.hash("admin123", 10);
+    const admin = await prisma.user.upsert({
+      where: { email: "admin@waterways.com" },
+      update: {
+        password: hashedPassword,
+        role: UserRole.ADMIN,
+        name: "Admin User",
+      },
+      create: {
+        email: "admin@waterways.com",
+        password: hashedPassword,
+        role: UserRole.ADMIN,
+        name: "Admin User",
+      },
+    });
+    res.json({ 
+      success: true, 
+      message: "Admin user reset",
+      email: admin.email,
+      id: admin.id 
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : "Unknown error" 
+    });
+  }
+});
+
 app.use("/api/auth", authRouter);
 app.use("/api/seasons", seasonsRouter);
 app.use("/api/competitions", competitionsRouter);
