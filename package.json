@@ -1,0 +1,28 @@
+{
+  "name": "waterways-platform",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
+    "test": "turbo run test",
+    "db:generate": "cd packages/db && npm run generate",
+    "db:migrate": "cd packages/db && npm run migrate",
+    "db:seed": "cd packages/db && npm run seed",
+    "db:studio": "cd packages/db && npm run studio"
+  },
+  "devDependencies": {
+    "prettier": "^3.2.5",
+    "turbo": "^1.11.3",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

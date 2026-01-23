@@ -1,0 +1,27 @@
+{
+  "name": "@waterways/db",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "generate": "prisma generate",
+    "migrate": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "seed": "tsx prisma/seed.ts",
+    "studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.9.1",
+    "bcryptjs": "^2.4.3"
+  },
+  "devDependencies": {
+    "prisma": "^5.9.1",
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3",
+    "@types/bcryptjs": "^2.4.6"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}

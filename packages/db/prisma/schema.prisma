@@ -1,0 +1,178 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  COACH
+  VIEWER
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  role      UserRole @default(VIEWER)
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdRunResults RunResult[]
+  prescriptions     Prescription[]
+
+  @@map("users")
+}
+
+model Season {
+  id          String        @id @default(cuid())
+  name        String
+  year        Int
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  competitions Competition[]
+
+  @@unique([year, name])
+  @@map("seasons")
+}
+
+model Competition {
+  id          String      @id @default(cuid())
+  seasonId    String
+  name        String
+  date        DateTime
+  location    String?
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  season      Season      @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  runResults  RunResult[]
+
+  @@map("competitions")
+}
+
+model RunType {
+  id          String      @id @default(cuid())
+  code        String      @unique
+  name        String
+  description String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  runResults  RunResult[]
+  runSpecs    RunSpec[]
+  penaltyRules PenaltyRule[]
+  prescriptions Prescription[]
+
+  @@map("run_types")
+}
+
+model RunResult {
+  id              String        @id @default(cuid())
+  competitionId   String
+  runTypeId       String
+  totalTimeSeconds Float
+  penaltySeconds  Float         @default(0)
+  notes           String?
+  createdById     String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  competition     Competition   @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  runType         RunType       @relation(fields: [runTypeId], references: [id])
+  createdBy       User          @relation(fields: [createdById], references: [id])
+  penalties       RunPenalty[]
+  prescriptions   Prescription[]
+
+  @@index([competitionId])
+  @@index([runTypeId])
+  @@index([createdAt])
+  @@map("run_results")
+}
+
+model RunSpec {
+  id          String    @id @default(cuid())
+  runTypeId   String
+  version     String    @default("1.0.0")
+  jsonSpec    Json
+  markdownPath String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  runType     RunType   @relation(fields: [runTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([runTypeId, version])
+  @@map("run_specs")
+}
+
+model PenaltyRule {
+  id            String      @id @default(cuid())
+  ruleId        String      @unique
+  runTypeCode   String?     // null means applies to ALL run types
+  ruleText      String      // verbatim from rulebook
+  taxonomyCode  String      // internal classification
+  severity      String      // e.g., "minor", "major", "critical"
+  outcomeType   String      // e.g., "time_penalty", "disqualification", "warning"
+  outcomeSeconds Float?     // null if not a time penalty
+  sourcePdfRef  String?     // e.g., "Section 4.2.3, Page 12"
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  runType       RunType?    @relation(fields: [runTypeCode], references: [code], onDelete: SetNull)
+  runPenalties  RunPenalty[]
+
+  @@index([runTypeCode])
+  @@index([taxonomyCode])
+  @@map("penalty_rules")
+}
+
+model RunPenalty {
+  id            String      @id @default(cuid())
+  runResultId   String
+  penaltyRuleId String
+  secondsApplied Float?     // null if not a time penalty
+  notes         String?
+  createdAt     DateTime    @default(now())
+
+  runResult     RunResult   @relation(fields: [runResultId], references: [id], onDelete: Cascade)
+  penaltyRule   PenaltyRule @relation(fields: [penaltyRuleId], references: [id])
+
+  @@index([runResultId])
+  @@map("run_penalties")
+}
+
+model Drill {
+  id                  String   @id @default(cuid())
+  name                String
+  description         String
+  linkedTaxonomyCodes String[] // array of taxonomy codes this drill addresses
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("drills")
+}
+
+model Prescription {
+  id          String    @id @default(cuid())
+  runResultId String?
+  runTypeId   String?
+  text        String
+  createdById String
+  createdAt   DateTime  @default(now())
+
+  runResult   RunResult? @relation(fields: [runResultId], references: [id], onDelete: Cascade)
+  runType     RunType?   @relation(fields: [runTypeId], references: [id], onDelete: Cascade)
+  createdBy   User       @relation(fields: [createdById], references: [id])
+
+  @@index([runResultId])
+  @@index([runTypeId])
+  @@map("prescriptions")
+}
