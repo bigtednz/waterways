@@ -14,7 +14,8 @@
     "build": "tsc",
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",
-    "migrate:deploy": "prisma migrate deploy",
+    "migrate:resolve": "prisma migrate resolve --rolled-back 20240124000000_init || true",
+    "migrate:deploy": "npm run migrate:resolve && prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
     "studio": "prisma studio"
   },
