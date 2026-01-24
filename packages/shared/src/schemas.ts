@@ -53,6 +53,19 @@ export const runSpecSchema = z.object({
   markdownPath: z.string().optional(),
 });
 
+export const createRunSpecSchema = z.object({
+  runTypeCode: z.string(),
+  version: z.string().default("1.0.0"),
+  jsonSpec: z.any(),
+  markdownPath: z.string().optional(),
+});
+
+export const updateRunSpecSchema = z.object({
+  version: z.string().optional(),
+  jsonSpec: z.any().optional(),
+  markdownPath: z.string().optional(),
+});
+
 export const penaltyRuleSchema = z.object({
   ruleId: z.string(),
   runTypeCode: z.string().nullable(),

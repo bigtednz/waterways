@@ -1,4 +1,4 @@
-# Waterways Platform - Complete Documentation Bible
+# Big Teds Sports Analytics Platform - Complete Documentation Bible
 
 ## Table of Contents
 
@@ -18,9 +18,9 @@
 
 ## Project Overview
 
-### What is Waterways Platform?
+### What is Big Teds Sports Analytics Platform?
 
-Waterways Platform is a performance-diagnostics system that quantifies not just how fast a team runs, but **why time is lost**, **where it can be recovered**, and **which skills matter most for improvement** — grounded directly in UFBA rules and event design.
+Big Teds Sports Analytics Platform is a performance-diagnostics system that quantifies not just how fast a team runs, but **why time is lost**, **where it can be recovered**, and **which skills matter most for improvement** — grounded directly in UFBA rules and event design.
 
 The platform is designed as a scalable sports analytics, coaching, and performance tracking system. The first sport supported is Waterways competitions, with architecture designed to support multiple sports in the future.
 
@@ -155,7 +155,7 @@ const trends = computeCompetitionTrends(competitions);
 ### Monorepo Structure
 
 ```
-waterways-platform/
+big-teds-sports-platform/
 â”œâ”€â”€ apps/
 â”‚   â”œâ”€â”€ api/              # Express backend API
 â”‚   â”‚   â”œâ”€â”€ src/
@@ -1405,7 +1405,7 @@ Use conventional commits:
 
 ## License
 
-Proprietary - Waterways Platform
+Proprietary - Big Teds Sports Analytics Platform
 
 ---
 

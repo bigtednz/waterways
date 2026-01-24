@@ -18,7 +18,7 @@ export function Layout() {
         <aside className="w-64 bg-gray-900 text-white">
           <div className="p-6">
             <h1 className="text-xl font-bold">Waterways</h1>
-            <p className="text-sm text-gray-400 mt-1">Performance Platform</p>
+            <p className="text-sm text-gray-400 mt-1">Big Teds Sports Analytics Platform</p>
           </div>
           <nav className="mt-8">
             {navItems.map((item) => (
@@ -42,7 +42,7 @@ export function Layout() {
               <h2 className="text-lg font-semibold text-gray-800">
                 {navItems.find((item) =>
                   location.pathname.startsWith(item.path)
-                )?.label || "Waterways"}
+                )?.label || "Big Teds Sports Analytics Platform"}
               </h2>
               <button
                 onClick={auth.logout}

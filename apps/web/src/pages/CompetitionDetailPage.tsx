@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../lib/api";
 import { formatDate, formatTime } from "../lib/utils";
+import type { CompetitionTrend } from "@waterways/shared";
 
 interface RunResult {
   id: string;
@@ -16,7 +17,7 @@ interface Competition {
   name: string;
   date: string;
   location?: string;
-  season: { name: string };
+  season: { id: string; name: string };
   runResults: RunResult[];
 }
 
@@ -27,6 +28,8 @@ export function CompetitionDetailPage() {
   const [loading, setLoading] = useState(true);
   const [runTypes, setRunTypes] = useState<any[]>([]);
   const [quickEntry, setQuickEntry] = useState<Record<string, any>>({});
+  const [competitionTrends, setCompetitionTrends] = useState<CompetitionTrend[]>([]);
+  const [loadingTrends, setLoadingTrends] = useState(true);
 
   useEffect(() => {
     if (!id) return;
@@ -38,6 +41,21 @@ export function CompetitionDetailPage() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [id]);
+
+  // Load competition trends for comparison
+  useEffect(() => {
+    if (!competition?.season?.id) return;
+
+    setLoadingTrends(true);
+    api
+      .get(`/analytics/competition-trends?seasonId=${competition.season.id}`)
+      .then((res) => setCompetitionTrends(res.data))
+      .catch((err) => {
+        console.error("Failed to load competition trends:", err);
+        setCompetitionTrends([]);
+      })
+      .finally(() => setLoadingTrends(false));
+  }, [competition?.season?.id]);
 
   useEffect(() => {
     if (runTypes.length > 0 && competition) {
@@ -79,14 +97,58 @@ export function CompetitionDetailPage() {
       }));
 
     try {
-      await api.post("/run-results/bulk", {
-        competitionId: id,
-        runs,
+      // Check which runs already exist and need updating vs creating
+      const existingRunMap = new Map(
+        competition.runResults.map((rr) => [rr.runType.code, rr])
+      );
+
+      const toCreate: typeof runs = [];
+      const toUpdate: Array<{ id: string; data: typeof runs[0] }> = [];
+
+      runs.forEach((run) => {
+        const existing = existingRunMap.get(run.runTypeCode);
+        if (existing) {
+          toUpdate.push({ id: existing.id, data: run });
+        } else {
+          toCreate.push(run);
+        }
       });
+
+      // Update existing runs
+      await Promise.all(
+        toUpdate.map(({ id, data }) =>
+          api.put(`/run-results/${id}`, {
+            totalTimeSeconds: data.totalTimeSeconds,
+            penaltySeconds: data.penaltySeconds,
+            notes: data.notes,
+          })
+        )
+      );
+
+      // Create new runs
+      if (toCreate.length > 0) {
+        await api.post("/run-results/bulk", {
+          competitionId: id,
+          runs: toCreate,
+        });
+      }
+
       window.location.reload();
     } catch (error) {
       console.error("Failed to save runs:", error);
       alert("Failed to save runs. Please try again.");
+    }
+  };
+
+  const handleDeleteRun = async (runResultId: string) => {
+    if (!confirm("Are you sure you want to delete this run?")) return;
+
+    try {
+      await api.delete(`/run-results/${runResultId}`);
+      window.location.reload();
+    } catch (error) {
+      console.error("Failed to delete run:", error);
+      alert("Failed to delete run. Please try again.");
     }
   };
 
@@ -114,6 +176,39 @@ export function CompetitionDetailPage() {
     (sum, rr) => sum + rr.penaltySeconds,
     0
   );
+
+  // Calculate comparison metrics
+  const currentTrend = competitionTrends.find((t) => t.competitionId === competition.id);
+  const sortedTrends = [...competitionTrends].sort(
+    (a, b) => new Date(a.competitionDate).getTime() - new Date(b.competitionDate).getTime()
+  );
+  
+  const bestPerformance = sortedTrends.length > 0
+    ? Math.min(...sortedTrends.map((t) => t.medianCleanTime))
+    : null;
+  
+  const worstPerformance = sortedTrends.length > 0
+    ? Math.max(...sortedTrends.map((t) => t.medianCleanTime))
+    : null;
+  
+  const seasonAverage = sortedTrends.length > 0
+    ? sortedTrends.reduce((sum, t) => sum + t.medianCleanTime, 0) / sortedTrends.length
+    : null;
+  
+  const currentIndex = sortedTrends.findIndex((t) => t.competitionId === competition.id);
+  const previousCompetition = currentIndex > 0 ? sortedTrends[currentIndex - 1] : null;
+  
+  const comparisonToBest = currentTrend && bestPerformance && bestPerformance > 0
+    ? ((currentTrend.medianCleanTime - bestPerformance) / bestPerformance) * 100
+    : null;
+  
+  const comparisonToAverage = currentTrend && seasonAverage && seasonAverage > 0
+    ? ((currentTrend.medianCleanTime - seasonAverage) / seasonAverage) * 100
+    : null;
+  
+  const comparisonToPrevious = currentTrend && previousCompetition && previousCompetition.medianCleanTime > 0
+    ? currentTrend.medianCleanTime - previousCompetition.medianCleanTime
+    : null;
 
   return (
     <div className="space-y-6">
@@ -150,6 +245,147 @@ export function CompetitionDetailPage() {
           </p>
         </div>
       </div>
+
+      {/* Comparison to Standard */}
+      {!loadingTrends && currentTrend && sortedTrends.length > 0 && (
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg shadow-lg p-6 border border-blue-200">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">
+            Comparison to Season Standard
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Best Performance */}
+            {bestPerformance !== null && (
+              <div className="bg-white p-4 rounded-lg border border-emerald-200">
+                <p className="text-xs text-gray-500 mb-1">Best Performance (Season)</p>
+                <p className="text-2xl font-bold text-emerald-900">
+                  {formatTime(bestPerformance)}
+                </p>
+                {comparisonToBest !== null && (
+                  <p className={`text-xs mt-2 font-semibold ${
+                    comparisonToBest <= 0
+                      ? "text-emerald-600"
+                      : comparisonToBest <= 5
+                      ? "text-yellow-600"
+                      : "text-red-600"
+                  }`}>
+                    {comparisonToBest <= 0
+                      ? "✓ At or better than best"
+                      : comparisonToBest <= 5
+                      ? `+${comparisonToBest.toFixed(1)}% slower`
+                      : `+${comparisonToBest.toFixed(1)}% slower`}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Season Average */}
+            {seasonAverage !== null && (
+              <div className="bg-white p-4 rounded-lg border border-blue-200">
+                <p className="text-xs text-gray-500 mb-1">Season Average</p>
+                <p className="text-2xl font-bold text-blue-900">
+                  {formatTime(seasonAverage)}
+                </p>
+                {comparisonToAverage !== null && (
+                  <p className={`text-xs mt-2 font-semibold ${
+                    comparisonToAverage <= 0
+                      ? "text-emerald-600"
+                      : comparisonToAverage <= 5
+                      ? "text-yellow-600"
+                      : "text-red-600"
+                  }`}>
+                    {comparisonToAverage <= 0
+                      ? `✓ ${Math.abs(comparisonToAverage).toFixed(1)}% faster than average`
+                      : `${comparisonToAverage.toFixed(1)}% slower than average`}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Previous Competition */}
+            {previousCompetition && (
+              <div className="bg-white p-4 rounded-lg border border-purple-200">
+                <p className="text-xs text-gray-500 mb-1">Previous Competition</p>
+                <p className="text-2xl font-bold text-purple-900">
+                  {formatTime(previousCompetition.medianCleanTime)}
+                </p>
+                {comparisonToPrevious !== null && (
+                  <p className={`text-xs mt-2 font-semibold ${
+                    comparisonToPrevious < 0
+                      ? "text-emerald-600"
+                      : comparisonToPrevious === 0
+                      ? "text-gray-600"
+                      : "text-red-600"
+                  }`}>
+                    {comparisonToPrevious < 0
+                      ? `✓ ${formatTime(Math.abs(comparisonToPrevious))} faster`
+                      : comparisonToPrevious === 0
+                      ? "Same performance"
+                      : `${formatTime(comparisonToPrevious)} slower`}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Performance Rank */}
+            {sortedTrends.length > 0 && (
+              <div className="bg-white p-4 rounded-lg border border-amber-200">
+                <p className="text-xs text-gray-500 mb-1">Season Rank</p>
+                <p className="text-2xl font-bold text-amber-900">
+                  #{sortedTrends
+                    .map((t) => t.medianCleanTime)
+                    .sort((a, b) => a - b)
+                    .indexOf(currentTrend.medianCleanTime) + 1}
+                  <span className="text-sm text-gray-500"> / {sortedTrends.length}</span>
+                </p>
+                <p className="text-xs text-gray-500 mt-2">
+                  {sortedTrends
+                    .map((t) => t.medianCleanTime)
+                    .sort((a, b) => a - b)
+                    .indexOf(currentTrend.medianCleanTime) === 0
+                    ? "Best performance"
+                    : sortedTrends
+                        .map((t) => t.medianCleanTime)
+                        .sort((a, b) => a - b)
+                        .indexOf(currentTrend.medianCleanTime) === sortedTrends.length - 1
+                    ? "Needs improvement"
+                    : "Above average"}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Summary */}
+          <div className="mt-4 pt-4 border-t border-blue-200">
+            <div className="flex items-start gap-2">
+              <span className="text-lg">
+                {comparisonToBest !== null && comparisonToBest <= 0
+                  ? "🏆"
+                  : comparisonToAverage !== null && comparisonToAverage <= 0
+                  ? "✓"
+                  : "📊"}
+              </span>
+              <div>
+                <p className="text-sm font-medium text-gray-900">
+                  {comparisonToBest !== null && comparisonToBest <= 0
+                    ? "Excellent Performance"
+                    : comparisonToAverage !== null && comparisonToAverage <= 0
+                    ? "Above Average Performance"
+                    : "Below Average Performance"}
+                </p>
+                <p className="text-xs text-gray-600 mt-1">
+                  {comparisonToBest !== null && comparisonToBest <= 0
+                    ? "This competition matches or exceeds your best performance this season."
+                    : comparisonToAverage !== null && comparisonToAverage <= 0
+                    ? `You performed ${Math.abs(comparisonToAverage).toFixed(1)}% better than the season average.`
+                    : comparisonToAverage !== null
+                    ? `You performed ${comparisonToAverage.toFixed(1)}% slower than the season average.`
+                    : "Compare your performance to season benchmarks above."}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-lg shadow">
         <div className="p-6 border-b">
@@ -221,10 +457,15 @@ export function CompetitionDetailPage() {
             </tbody>
           </table>
         </div>
-        <div className="p-6 border-t">
+        <div className="p-6 border-t flex justify-between items-center">
+          <p className="text-sm text-gray-500">
+            {competition.runResults.length > 0
+              ? "Update existing runs or add new ones. Changes will be saved when you click 'Save All Runs'."
+              : "Enter run data and click 'Save All Runs' to create run results."}
+          </p>
           <button
             onClick={handleBulkSave}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
           >
             Save All Runs
           </button>
@@ -235,6 +476,9 @@ export function CompetitionDetailPage() {
         <div className="bg-white rounded-lg shadow">
           <div className="p-6 border-b">
             <h2 className="text-lg font-semibold text-gray-900">Current Results</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Edit runs above or delete individual runs below
+            </p>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -254,6 +498,9 @@ export function CompetitionDetailPage() {
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                     Notes
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Actions
                   </th>
                 </tr>
               </thead>
@@ -275,6 +522,14 @@ export function CompetitionDetailPage() {
                         {formatTime(cleanTime)}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500">{rr.notes || "-"}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <button
+                          onClick={() => handleDeleteRun(rr.id)}
+                          className="text-red-600 hover:text-red-800 text-sm font-medium"
+                        >
+                          Delete
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}

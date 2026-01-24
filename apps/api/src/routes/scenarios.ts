@@ -1,5 +1,6 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import { prisma } from "@waterways/db";
+import { Prisma } from "@prisma/client";
 import { authenticate, requireRole, AuthRequest } from "../middleware/auth.js";
 import { scenarioSchema, scenarioAdjustmentSchema } from "@waterways/shared";
 
@@ -159,6 +160,7 @@ scenariosRouter.post(
       const adjustment = await prisma.scenarioAdjustment.create({
         data: {
           ...data,
+          payloadJson: data.payloadJson as Prisma.InputJsonValue,
           scenarioId,
         },
       });

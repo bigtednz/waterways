@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma } from "@waterways/db";
+import { Prisma } from "@prisma/client";
 import { authenticate, AuthRequest } from "../middleware/auth.js";
 import type {
   CompetitionTrend,
@@ -42,7 +43,7 @@ async function persistAnalyticsResult(
   durationMs?: number
 ): Promise<void> {
   try {
-    const paramsJson = JSON.parse(createStableParamsJson(params));
+    const paramsJson = JSON.parse(createStableParamsJson(params)) as Prisma.InputJsonValue;
     const analyticsRun = await prisma.analyticsRun.create({
       data: {
         analyticsVersion: ANALYTICS_VERSION,
@@ -62,7 +63,7 @@ async function persistAnalyticsResult(
         analyticsRunId: analyticsRun.id,
         analyticsVersion: ANALYTICS_VERSION,
         artifactKey,
-        outputJson: output as Record<string, unknown>,
+        outputJson: output as Prisma.InputJsonValue,
       },
     });
   } catch (error) {

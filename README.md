@@ -1,4 +1,4 @@
-# Waterways Performance Tracking Platform
+# Big Teds Sports Analytics Platform
 
 A performance-diagnostics system that quantifies not just how fast a team runs, but **why time is lost**, **where it can be recovered**, and **which skills matter most for improvement** — grounded directly in UFBA rules and event design.
 
@@ -97,7 +97,7 @@ The web app will run on `http://localhost:3000`
 ## Project Structure
 
 ```
-waterways-platform/
+big-teds-sports-platform/
 ├── apps/
 │   ├── api/          # Express backend
 │   └── web/           # React frontend
@@ -230,4 +230,4 @@ npm run test:e2e
 
 ## License
 
-Proprietary - Waterways Platform
+Proprietary - Big Teds Sports Analytics Platform
