@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import { existsSync } from "fs";
 import { authRouter } from "./routes/auth.js";
 import { seasonsRouter } from "./routes/seasons.js";
 import { competitionsRouter } from "./routes/competitions.js";
@@ -72,7 +73,7 @@ app.use(express.json());
 app.get("/", (req, res) => {
   if (process.env.NODE_ENV === "production") {
     // In production, try to serve the frontend
-    const indexPath = path.join(__dirname, "../../../web/dist/index.html");
+    const indexPath = path.join(__dirname, "../../web/dist/index.html");
     res.sendFile(indexPath, (err) => {
       if (err) {
         // If frontend not found, show API info as fallback
@@ -157,14 +158,23 @@ app.use("/api/scenarios", scenariosRouter);
 app.use(errorHandler);
 
 // Serve static files from web app (must be after API routes)
-const webDistPath = path.join(__dirname, "../../../web/dist");
+// From apps/api/dist, go up to apps/, then into web/dist
+const webDistPath = path.join(__dirname, "../../web/dist");
 const isProduction = process.env.NODE_ENV === "production";
 
 console.log(`NODE_ENV: ${process.env.NODE_ENV || "not set"}`);
+console.log(`__dirname: ${__dirname}`);
 console.log(`Web dist path: ${webDistPath}`);
+console.log(`Web dist exists: ${existsSync(webDistPath)}`);
 
 // Always try to serve static files if they exist
-app.use(express.static(webDistPath));
+if (existsSync(webDistPath)) {
+  console.log(`✅ Serving static files from: ${webDistPath}`);
+  app.use(express.static(webDistPath));
+} else {
+  console.warn(`⚠️ Web dist directory not found at: ${webDistPath}`);
+  console.warn(`⚠️ Frontend will not be served. Check that the web app was built.`);
+}
 
 // Serve index.html for all non-API routes (SPA fallback)
 app.get("*", (req, res, next) => {
