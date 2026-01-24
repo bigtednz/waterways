@@ -36,7 +36,7 @@ coverage/
 .nyc_output/
 
 # Prisma
-packages/db/prisma/migrations/
+# Note: migrations/ should be committed, not ignored
 
 # Turbo
 .turbo/
