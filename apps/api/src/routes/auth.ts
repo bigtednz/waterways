@@ -41,22 +41,43 @@ authRouter.post("/register", async (req, res, next) => {
 
 authRouter.post("/login", async (req, res, next) => {
   try {
-    const { email, password } = loginSchema.parse(req.body);
+    console.log("Login attempt - email:", req.body?.email);
+    
+    // Validate input
+    const validatedData = loginSchema.parse(req.body);
+    const { email, password } = validatedData;
 
+    console.log("Looking up user:", email);
     const user = await prisma.user.findUnique({
       where: { email },
     });
 
-    if (!user || !(await bcrypt.compare(password, user.password))) {
+    if (!user) {
+      console.log("User not found:", email);
       return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    console.log("User found, comparing password...");
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    
+    if (!passwordMatch) {
+      console.log("Password mismatch for user:", email);
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    console.log("Password match, generating token...");
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      console.warn("⚠️ JWT_SECRET not set, using fallback secret");
     }
 
     const token = jwt.sign(
       { userId: user.id, role: user.role },
-      process.env.JWT_SECRET || "secret",
+      jwtSecret || "secret",
       { expiresIn: "7d" }
     );
 
+    console.log("Login successful for user:", email);
     res.json({
       user: {
         id: user.id,
@@ -67,6 +88,11 @@ authRouter.post("/login", async (req, res, next) => {
       token,
     });
   } catch (error) {
+    console.error("Login error:", error);
+    if (error instanceof Error) {
+      console.error("Error name:", error.name);
+      console.error("Error message:", error.message);
+    }
     next(error);
   }
 });
