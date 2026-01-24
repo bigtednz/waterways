@@ -11,6 +11,7 @@ import { runResultsRouter } from "./routes/runResults.js";
 import { runSpecsRouter } from "./routes/runSpecs.js";
 import { penaltyRulesRouter } from "./routes/penaltyRules.js";
 import { analyticsRouter } from "./routes/analytics.js";
+import { scenariosRouter } from "./routes/scenarios.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { prisma } from "@waterways/db";
 import bcrypt from "bcryptjs";
@@ -79,7 +80,8 @@ if (process.env.NODE_ENV !== "production") {
         competitions: "/api/competitions",
         runTypes: "/api/run-types",
         runResults: "/api/run-results",
-        analytics: "/api/analytics"
+        analytics: "/api/analytics",
+        scenarios: "/api/scenarios"
       }
     });
   });
@@ -129,6 +131,7 @@ app.use("/api/run-results", runResultsRouter);
 app.use("/api/run-specs", runSpecsRouter);
 app.use("/api/penalty-rules", penaltyRulesRouter);
 app.use("/api/analytics", analyticsRouter);
+app.use("/api/scenarios", scenariosRouter);
 
 app.use(errorHandler);
 

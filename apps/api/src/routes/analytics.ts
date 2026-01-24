@@ -1,92 +1,114 @@
 import { Router } from "express";
 import { prisma } from "@waterways/db";
-import { authenticate } from "../middleware/auth.js";
+import { authenticate, AuthRequest } from "../middleware/auth.js";
 import type {
   CompetitionTrend,
   RunDiagnostic,
   DriverAnalysis,
   CoachingSummary,
 } from "@waterways/shared";
+import {
+  ANALYTICS_VERSION,
+  computeCompetitionTrends,
+  computeRunDiagnostics,
+  computeDrivers,
+  applyScenarioAdjustments,
+} from "@waterways/analytics-engine";
+import {
+  loadCompetitionsForAnalytics,
+  loadRunResultsForDiagnostics,
+  loadCompetitionsForRunType,
+  loadScenarioAdjustments,
+  createStableParamsJson,
+} from "../lib/analyticsDataLoader.js";
+import { calculateMedian } from "@waterways/analytics-engine";
 
 export const analyticsRouter = Router();
 
 analyticsRouter.use(authenticate);
 
-function calculateMedian(values: number[]): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[mid - 1] + sorted[mid]) / 2
-    : sorted[mid];
-}
+/**
+ * Helper to optionally persist analytics results
+ */
+async function persistAnalyticsResult(
+  computationType: string,
+  params: Record<string, unknown>,
+  output: unknown,
+  artifactKey: string,
+  scopeType?: string,
+  scopeId?: string,
+  scenarioId?: string,
+  createdById?: string,
+  durationMs?: number
+): Promise<void> {
+  try {
+    const paramsJson = JSON.parse(createStableParamsJson(params));
+    const analyticsRun = await prisma.analyticsRun.create({
+      data: {
+        analyticsVersion: ANALYTICS_VERSION,
+        computationType,
+        paramsJson,
+        scopeType: scopeType || null,
+        scopeId: scopeId || null,
+        scenarioId: scenarioId || null,
+        status: "completed",
+        durationMs,
+        createdById: createdById || null,
+      },
+    });
 
-function calculateIQR(values: number[]): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const q1Index = Math.floor(sorted.length * 0.25);
-  const q3Index = Math.floor(sorted.length * 0.75);
-  const q1 = sorted[q1Index];
-  const q3 = sorted[q3Index];
-  return q3 - q1;
-}
-
-function calculatePercentile(values: number[], percentile: number): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const index = Math.floor((sorted.length - 1) * percentile);
-  return sorted[index];
+    await prisma.analyticsArtifact.create({
+      data: {
+        analyticsRunId: analyticsRun.id,
+        analyticsVersion: ANALYTICS_VERSION,
+        artifactKey,
+        outputJson: output as Record<string, unknown>,
+      },
+    });
+  } catch (error) {
+    // Don't fail the request if persistence fails
+    console.error("Failed to persist analytics result:", error);
+  }
 }
 
 analyticsRouter.get("/competition-trends", async (req, res, next) => {
   try {
+    const startTime = Date.now();
     const seasonId = req.query.seasonId as string | undefined;
+    const scenarioId = req.query.scenarioId as string | undefined;
+    const persist = req.query.persist === "true";
 
-    const competitions = await prisma.competition.findMany({
-      where: seasonId ? { seasonId } : undefined,
-      include: {
-        runResults: {
-          include: {
-            runType: true,
-            penalties: {
-              include: {
-                penaltyRule: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: { date: "asc" },
-    });
+    // Load baseline data
+    let competitions = await loadCompetitionsForAnalytics(seasonId);
 
-    const trends: CompetitionTrend[] = competitions.map((comp) => {
-      const cleanTimes = comp.runResults.map(
-        (rr) => Math.max(0, rr.totalTimeSeconds - rr.penaltySeconds)
+    // Apply scenario adjustments if provided
+    let adjustments: Awaited<ReturnType<typeof loadScenarioAdjustments>> = [];
+    if (scenarioId) {
+      adjustments = await loadScenarioAdjustments(scenarioId);
+      competitions = applyScenarioAdjustments(competitions, adjustments);
+    }
+
+    // Compute trends using analytics engine
+    const trends = computeCompetitionTrends(competitions);
+
+    const durationMs = Date.now() - startTime;
+
+    // Optionally persist results
+    if (persist) {
+      await persistAnalyticsResult(
+        "competition-trends",
+        { seasonId, scenarioId },
+        trends,
+        scenarioId
+          ? `competition-trends:seasonId=${seasonId || "all"}:scenarioId=${scenarioId}`
+          : `competition-trends:seasonId=${seasonId || "all"}`,
+        seasonId ? "SEASON" : undefined,
+        seasonId || undefined,
+        scenarioId || undefined,
+        (req as AuthRequest).userId || undefined,
+        durationMs
       );
-
-      const medianCleanTime = calculateMedian(cleanTimes);
-      const penaltyLoad = comp.runResults.reduce(
-        (sum, rr) => sum + rr.penaltySeconds,
-        0
-      );
-      const penaltyRate =
-        comp.runResults.length > 0
-          ? comp.runResults.filter((rr) => rr.penaltySeconds > 0).length /
-            comp.runResults.length
-          : 0;
-      const consistencyIQR = calculateIQR(cleanTimes);
-
-      return {
-        competitionId: comp.id,
-        competitionName: comp.name,
-        competitionDate: comp.date.toISOString(),
-        medianCleanTime,
-        penaltyLoad,
-        penaltyRate,
-        consistencyIQR,
-        runCount: comp.runResults.length,
-      };
-    });
+    }
 
     res.json(trends);
   } catch (error) {
@@ -96,8 +118,11 @@ analyticsRouter.get("/competition-trends", async (req, res, next) => {
 
 analyticsRouter.get("/run-diagnostics", async (req, res, next) => {
   try {
+    const startTime = Date.now();
     const runTypeCode = req.query.runTypeCode as string;
     const windowSize = parseInt(req.query.windowSize as string) || 3;
+    const scenarioId = req.query.scenarioId as string | undefined;
+    const persist = req.query.persist === "true";
 
     if (!runTypeCode) {
       return res.status(400).json({ error: "runTypeCode is required" });
@@ -111,71 +136,99 @@ analyticsRouter.get("/run-diagnostics", async (req, res, next) => {
       return res.status(404).json({ error: "Run type not found" });
     }
 
-    const runResults = await prisma.runResult.findMany({
-      where: { runTypeId: runType.id },
-      include: {
-        competition: true,
-        penalties: {
-          include: {
-            penaltyRule: true,
-          },
-        },
-      },
-      orderBy: {
-        competition: {
-          date: "asc",
-        },
+    // Load baseline data
+    let runResults = await loadRunResultsForDiagnostics(runType.id);
+
+    // Apply scenario adjustments if provided
+    if (scenarioId) {
+      const adjustments = await loadScenarioAdjustments(scenarioId);
+      // Load competitions structure for scenario application
+      const competitions = await loadCompetitionsForRunType(runType.id);
+      const adjustedCompetitions = applyScenarioAdjustments(
+        competitions,
+        adjustments
+      );
+      // Extract run results for the specific run type
+      runResults = adjustedCompetitions.flatMap((comp) => comp.runResults);
+    }
+
+    // Compute diagnostics using analytics engine
+    const diagnostic = computeRunDiagnostics(runResults, windowSize);
+
+    // Fill in competition details
+    const competitions = await prisma.competition.findMany({
+      where: {
+        id: { in: runResults.map((rr) => rr.competitionId) },
       },
     });
+    const competitionMap = new Map(
+      competitions.map((c) => [c.id, c])
+    );
 
-    const dataPoints = runResults.map((rr) => {
-      const cleanTime = Math.max(0, rr.totalTimeSeconds - rr.penaltySeconds);
+    diagnostic.dataPoints = diagnostic.dataPoints.map((dp) => {
+      const comp = competitionMap.get(dp.competitionId);
       return {
-        competitionId: rr.competition.id,
-        competitionName: rr.competition.name,
-        competitionDate: rr.competition.date.toISOString(),
-        cleanTime,
-        penaltySeconds: rr.penaltySeconds,
-        totalTimeSeconds: rr.totalTimeSeconds,
+        ...dp,
+        competitionName: comp?.name || "",
+        competitionDate: comp?.date.toISOString() || "",
       };
     });
 
-    const rollingMedian: Array<{ competitionDate: string; value: number }> = [];
-    const rollingIQR: Array<{
-      competitionDate: string;
-      lower: number;
-      upper: number;
-    }> = [];
+    diagnostic.rollingMedian = diagnostic.rollingMedian.map((rm) => {
+      // Find matching data point to get date
+      const dp = diagnostic.dataPoints.find(
+        (d) => d.competitionDate === rm.competitionDate
+      );
+      return {
+        ...rm,
+        competitionDate: dp?.competitionDate || rm.competitionDate,
+      };
+    });
 
-    for (let i = windowSize - 1; i < dataPoints.length; i++) {
-      const window = dataPoints.slice(i - windowSize + 1, i + 1);
-      const cleanTimes = window.map((dp) => dp.cleanTime);
-      const median = calculateMedian(cleanTimes);
-      const iqr = calculateIQR(cleanTimes);
-      const q1 = calculatePercentile(cleanTimes, 0.25);
-      const q3 = calculatePercentile(cleanTimes, 0.75);
+    diagnostic.rollingIQR = diagnostic.rollingIQR.map((riqr) => {
+      const dp = diagnostic.dataPoints.find(
+        (d) => d.competitionDate === riqr.competitionDate
+      );
+      return {
+        ...riqr,
+        competitionDate: dp?.competitionDate || riqr.competitionDate,
+      };
+    });
 
-      rollingMedian.push({
-        competitionDate: window[window.length - 1].competitionDate,
-        value: median,
-      });
+    const durationMs = Date.now() - startTime;
 
-      rollingIQR.push({
-        competitionDate: window[window.length - 1].competitionDate,
-        lower: q1,
-        upper: q3,
-      });
+    // Optionally persist results
+    if (persist) {
+      await persistAnalyticsResult(
+        "run-diagnostics",
+        { runTypeCode, windowSize, scenarioId },
+        diagnostic,
+        scenarioId
+          ? `run-diagnostics:${runTypeCode}:scenarioId=${scenarioId}`
+          : `run-diagnostics:${runTypeCode}`,
+        "RUN_TYPE",
+        runType.id,
+        scenarioId || undefined,
+        (req as AuthRequest).userId || undefined,
+        durationMs
+      );
     }
 
-    const diagnostic: RunDiagnostic = {
-      runTypeCode: runType.code,
-      runTypeName: runType.name,
-      dataPoints,
-      rollingMedian,
-      rollingIQR,
-    };
-
-    res.json(diagnostic);
+    // If scenario provided, also compute baseline for comparison
+    if (scenarioId) {
+      const baselineRunResults = await loadRunResultsForDiagnostics(runType.id);
+      const baseline = computeRunDiagnostics(baselineRunResults, windowSize);
+      res.json({
+        baseline,
+        scenario: diagnostic,
+        delta: {
+          medianImprovement: baseline.rollingMedian[baseline.rollingMedian.length - 1]?.value -
+            diagnostic.rollingMedian[diagnostic.rollingMedian.length - 1]?.value || 0,
+        },
+      });
+    } else {
+      res.json(diagnostic);
+    }
   } catch (error) {
     next(error);
   }
@@ -183,69 +236,65 @@ analyticsRouter.get("/run-diagnostics", async (req, res, next) => {
 
 analyticsRouter.get("/drivers", async (req, res, next) => {
   try {
+    const startTime = Date.now();
     const seasonId = req.query.seasonId as string | undefined;
+    const scenarioId = req.query.scenarioId as string | undefined;
+    const persist = req.query.persist === "true";
 
-    const competitions = await prisma.competition.findMany({
-      where: seasonId ? { seasonId } : undefined,
-      include: {
-        runResults: {
-          include: {
-            runType: true,
-            penalties: {
-              include: {
-                penaltyRule: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: { date: "asc" },
-    });
+    // Load baseline data
+    let competitions = await loadCompetitionsForAnalytics(seasonId);
 
-    const runTypeMap = new Map<string, DriverAnalysis>();
+    // Apply scenario adjustments if provided
+    let adjustments: Awaited<ReturnType<typeof loadScenarioAdjustments>> = [];
+    if (scenarioId) {
+      adjustments = await loadScenarioAdjustments(scenarioId);
+      competitions = applyScenarioAdjustments(competitions, adjustments);
+    }
 
-    competitions.forEach((comp) => {
-      comp.runResults.forEach((rr) => {
-        const code = rr.runType.code;
-        if (!runTypeMap.has(code)) {
-          runTypeMap.set(code, {
-            runTypeCode: code,
-            runTypeName: rr.runType.name,
-            penaltyCount: 0,
-            totalPenaltySeconds: 0,
-            taxonomyBreakdown: [],
-            trendImpact: "stable",
-          });
-        }
+    // Compute drivers using analytics engine
+    const drivers = computeDrivers(competitions);
 
-        const analysis = runTypeMap.get(code)!;
-        analysis.penaltyCount += rr.penalties.length;
-        analysis.totalPenaltySeconds += rr.penaltySeconds;
+    const durationMs = Date.now() - startTime;
 
-        rr.penalties.forEach((penalty) => {
-          const taxonomy = penalty.penaltyRule.taxonomyCode;
-          let breakdown = analysis.taxonomyBreakdown.find(
-            (b) => b.taxonomyCode === taxonomy
+    // Optionally persist results
+    if (persist) {
+      await persistAnalyticsResult(
+        "drivers",
+        { seasonId, scenarioId },
+        drivers,
+        scenarioId
+          ? `drivers:seasonId=${seasonId || "all"}:scenarioId=${scenarioId}`
+          : `drivers:seasonId=${seasonId || "all"}`,
+        seasonId ? "SEASON" : undefined,
+        seasonId || undefined,
+        scenarioId || undefined,
+        (req as AuthRequest).userId || undefined,
+        durationMs
+      );
+    }
+
+    // If scenario provided, also compute baseline for comparison
+    if (scenarioId) {
+      const baselineCompetitions = await loadCompetitionsForAnalytics(seasonId);
+      const baseline = computeDrivers(baselineCompetitions);
+      res.json({
+        baseline,
+        scenario: drivers,
+        delta: drivers.map((d) => {
+          const baselineDriver = baseline.find(
+            (b) => b.runTypeCode === d.runTypeCode
           );
-          if (!breakdown) {
-            breakdown = {
-              taxonomyCode: taxonomy,
-              count: 0,
-              totalSeconds: 0,
-            };
-            analysis.taxonomyBreakdown.push(breakdown);
-          }
-          breakdown.count++;
-          breakdown.totalSeconds += penalty.secondsApplied || 0;
-        });
+          return {
+            runTypeCode: d.runTypeCode,
+            penaltySecondsDelta:
+              (baselineDriver?.totalPenaltySeconds || 0) -
+              d.totalPenaltySeconds,
+          };
+        }),
       });
-    });
-
-    const drivers = Array.from(runTypeMap.values()).sort(
-      (a, b) => b.totalPenaltySeconds - a.totalPenaltySeconds
-    );
-
-    res.json(drivers);
+    } else {
+      res.json(drivers);
+    }
   } catch (error) {
     next(error);
   }

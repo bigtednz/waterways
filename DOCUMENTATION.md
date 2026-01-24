@@ -3,15 +3,16 @@
 ## Table of Contents
 
 1. [Project Overview](#project-overview)
-2. [Architecture](#architecture)
-3. [Getting Started](#getting-started)
-4. [Development Guide](#development-guide)
-5. [API Documentation](#api-documentation)
-6. [Database Schema](#database-schema)
-7. [Deployment](#deployment)
-8. [Troubleshooting](#troubleshooting)
-9. [Best Practices](#best-practices)
-10. [Contributing](#contributing)
+2. [Analytics Engine](#analytics-engine)
+3. [Architecture](#architecture)
+4. [Getting Started](#getting-started)
+5. [Development Guide](#development-guide)
+6. [API Documentation](#api-documentation)
+7. [Database Schema](#database-schema)
+8. [Deployment](#deployment)
+9. [Troubleshooting](#troubleshooting)
+10. [Best Practices](#best-practices)
+11. [Contributing](#contributing)
 
 ---
 
@@ -44,6 +45,82 @@ The platform is designed as a scalable sports analytics, coaching, and performan
 - **Monorepo**: Turborepo with npm workspaces
 - **Authentication**: JWT (jsonwebtoken)
 - **Password Hashing**: bcryptjs
+
+---
+
+## Analytics Engine
+
+### Overview
+
+The Analytics Engine (`packages/analytics-engine`) is a pure, deterministic TypeScript package that provides versioned, testable, and extensible analytics computations. It serves as a boundary between data access and computation logic.
+
+### Key Features
+
+- **Pure Functions**: No side effects, no Express, no React dependencies
+- **Versioned**: `ANALYTICS_VERSION = "2.0.0"` tracks computation algorithm versions
+- **Deterministic**: Same inputs always produce same outputs
+- **Testable**: Unit tests with fixed fixtures ensure correctness
+- **Extensible**: Easy to add new computation functions
+
+### Analytics Functions
+
+#### `computeCompetitionTrends(competitions: CompetitionData[]): CompetitionTrend[]`
+Computes competition-level performance trends including median clean time, penalty load, penalty rate, and consistency (IQR).
+
+#### `computeRunDiagnostics(runResults: RunResultData[], windowSize?: number): RunDiagnostic`
+Computes run-level diagnostics for a specific run type with rolling median and IQR bands.
+
+#### `computeDrivers(competitions: CompetitionData[]): DriverAnalysis[]`
+Analyzes performance drivers by run type, identifying penalty patterns and taxonomy breakdowns.
+
+#### `computeRecoverableTime(runResults: RunResultData[])`
+Estimates recoverable time = penaltySeconds + variance estimate (IQR * 0.5).
+
+#### `applyScenarioAdjustments(competitions: CompetitionData[], adjustments: ScenarioAdjustmentData[]): CompetitionData[]`
+Applies scenario adjustments to baseline data without modifying actual run results.
+
+### Scenario Simulation
+
+Scenarios allow "what-if" analysis by overlaying adjustments on baseline data:
+
+**Adjustment Types:**
+- `REMOVE_PENALTY_TAXONOMY`: Remove all penalties matching a taxonomy code
+- `OVERRIDE_PENALTY_SECONDS`: Override penalty seconds for specific rules/taxonomies
+- `CLEAN_TIME_DELTA`: Adjust clean time by a delta (optionally filtered by run type)
+
+**Scope Types:**
+- `SEASON`: Apply to all competitions in a season
+- `COMPETITION`: Apply to a specific competition
+- `RUN_TYPE`: Apply to all runs of a specific type
+- `RUN_RESULT`: Apply to a specific run result
+
+### Analytics Versioning
+
+All analytics computations are tracked with:
+- `analyticsVersion`: Algorithm version (e.g., "2.0.0")
+- `AnalyticsRun`: Records each computation with params, scope, duration
+- `AnalyticsArtifact`: Stores outputs as JSON for caching/replay
+
+### Usage Example
+
+```typescript
+import {
+  computeCompetitionTrends,
+  applyScenarioAdjustments,
+} from "@waterways/analytics-engine";
+
+// Load baseline data
+const competitions = await loadCompetitionsForAnalytics(seasonId);
+
+// Optionally apply scenario
+if (scenarioId) {
+  const adjustments = await loadScenarioAdjustments(scenarioId);
+  competitions = applyScenarioAdjustments(competitions, adjustments);
+}
+
+// Compute analytics
+const trends = computeCompetitionTrends(competitions);
+```
 
 ---
 
@@ -615,8 +692,10 @@ Get run-level diagnostics for a specific run type.
 **Query Parameters:**
 - `runTypeCode` (required): Run type code (e.g., "A1")
 - `windowSize` (optional): Rolling window size (default: 3)
+- `scenarioId` (optional): Apply scenario adjustments
+- `persist` (optional): Set to "true" to cache results
 
-**Response:**
+**Response (without scenario):**
 ```json
 {
   "runTypeCode": "A1",
@@ -653,8 +732,10 @@ Get performance drivers analysis.
 
 **Query Parameters:**
 - `seasonId` (optional): Filter by season
+- `scenarioId` (optional): Apply scenario adjustments
+- `persist` (optional): Set to "true" to cache results
 
-**Response:**
+**Response (without scenario):**
 ```json
 [
   {
@@ -717,6 +798,90 @@ List penalty rules.
 
 **Query Parameters:**
 - `runTypeCode` (optional): Filter by run type
+
+#### Scenarios
+
+##### `GET /api/scenarios`
+
+List all scenarios.
+
+**Response:**
+```json
+[
+  {
+    "id": "clx...",
+    "name": "No Order Violations",
+    "notes": "Simulate removing all order violation penalties",
+    "createdById": "clx...",
+    "createdBy": { ... },
+    "_count": { "adjustments": 2 },
+    "createdAt": "2024-01-01T00:00:00.000Z",
+    "updatedAt": "2024-01-01T00:00:00.000Z"
+  }
+]
+```
+
+##### `GET /api/scenarios/:id`
+
+Get scenario with adjustments.
+
+**Response:**
+```json
+{
+  "id": "clx...",
+  "name": "No Order Violations",
+  "notes": "...",
+  "adjustments": [
+    {
+      "id": "clx...",
+      "scopeType": "SEASON",
+      "scopeId": "clx...",
+      "adjustmentType": "REMOVE_PENALTY_TAXONOMY",
+      "payloadJson": {
+        "taxonomyCode": "ORDER_VIOLATION"
+      }
+    }
+  ]
+}
+```
+
+##### `POST /api/scenarios`
+
+Create scenario. **Requires ADMIN or COACH role.**
+
+**Request Body:**
+```json
+{
+  "name": "No Order Violations",
+  "notes": "Simulate removing all order violation penalties"
+}
+```
+
+##### `POST /api/scenarios/:id/adjustments`
+
+Add adjustment to scenario. **Requires ADMIN or COACH role.**
+
+**Request Body:**
+```json
+{
+  "scopeType": "SEASON",
+  "scopeId": "clx...",
+  "adjustmentType": "REMOVE_PENALTY_TAXONOMY",
+  "payloadJson": {
+    "taxonomyCode": "ORDER_VIOLATION"
+  }
+}
+```
+
+**Adjustment Payload Examples:**
+
+- `REMOVE_PENALTY_TAXONOMY`: `{ "taxonomyCode": "ORDER_VIOLATION" }`
+- `OVERRIDE_PENALTY_SECONDS`: `{ "taxonomyCode": "ORDER_VIOLATION", "newSeconds": 5 }` or `{ "penaltyRuleId": "pr1", "newSeconds": 5 }`
+- `CLEAN_TIME_DELTA`: `{ "secondsDelta": 5, "runTypeCode": "A1" }` (runTypeCode optional)
+
+##### `DELETE /api/scenarios/:id/adjustments/:adjustmentId`
+
+Delete adjustment. **Requires ADMIN or COACH role.**
 
 ##### `GET /health`
 

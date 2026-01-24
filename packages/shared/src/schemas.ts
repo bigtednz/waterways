@@ -75,3 +75,19 @@ export const prescriptionSchema = z.object({
   runTypeId: z.string().optional(),
   text: z.string().min(1),
 });
+
+export const scenarioSchema = z.object({
+  name: z.string().min(1),
+  notes: z.string().optional(),
+});
+
+export const scenarioAdjustmentSchema = z.object({
+  scopeType: z.enum(["SEASON", "COMPETITION", "RUN_TYPE", "RUN_RESULT"]),
+  scopeId: z.string().nullable(),
+  adjustmentType: z.enum([
+    "REMOVE_PENALTY_TAXONOMY",
+    "OVERRIDE_PENALTY_SECONDS",
+    "CLEAN_TIME_DELTA",
+  ]),
+  payloadJson: z.record(z.unknown()),
+});

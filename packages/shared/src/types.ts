@@ -11,6 +11,10 @@ export type RunSpecInput = z.infer<typeof schemas.runSpecSchema>;
 export type PenaltyRuleInput = z.infer<typeof schemas.penaltyRuleSchema>;
 export type DrillInput = z.infer<typeof schemas.drillSchema>;
 export type PrescriptionInput = z.infer<typeof schemas.prescriptionSchema>;
+export type ScenarioInput = z.infer<typeof schemas.scenarioSchema>;
+export type ScenarioAdjustmentInput = z.infer<
+  typeof schemas.scenarioAdjustmentSchema
+>;
 
 export interface CompetitionTrend {
   competitionId: string;

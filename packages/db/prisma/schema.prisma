@@ -24,6 +24,8 @@ model User {
 
   createdRunResults RunResult[]
   prescriptions     Prescription[]
+  analyticsRuns     AnalyticsRun[]
+  scenarios         Scenario[]
 
   @@map("users")
 }
@@ -175,4 +177,93 @@ model Prescription {
   @@index([runResultId])
   @@index([runTypeId])
   @@map("prescriptions")
+}
+
+model AnalyticsRun {
+  id              String   @id @default(cuid())
+  analyticsVersion String
+  computationType  String   // e.g., "competition-trends", "run-diagnostics", "drivers"
+  paramsJson       Json     // stable, sorted JSON of input parameters
+  scopeType        String?  // "SEASON", "COMPETITION", "RUN_TYPE", "ALL"
+  scopeId          String?
+  scenarioId       String?
+  status           String   @default("completed") // "completed", "failed", "running"
+  durationMs       Int?
+  runAt            DateTime @default(now())
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  createdBy        User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  scenario         Scenario? @relation(fields: [scenarioId], references: [id], onDelete: SetNull)
+  artifacts        AnalyticsArtifact[]
+
+  @@index([analyticsVersion])
+  @@index([computationType])
+  @@index([scenarioId])
+  @@index([runAt])
+  @@map("analytics_runs")
+}
+
+model AnalyticsArtifact {
+  id              String       @id @default(cuid())
+  analyticsRunId  String
+  analyticsVersion String
+  artifactKey     String       // e.g., "competition-trends", "run-diagnostics:A3", "drivers:seasonId=..."
+  outputJson      Json         // computed output stored as JSON
+  metadata        Json?        // additional metadata (size, checksum, etc.)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  analyticsRun    AnalyticsRun @relation(fields: [analyticsRunId], references: [id], onDelete: Cascade)
+
+  @@unique([analyticsRunId, artifactKey])
+  @@index([artifactKey])
+  @@index([analyticsVersion])
+  @@map("analytics_artifacts")
+}
+
+model Scenario {
+  id          String   @id @default(cuid())
+  name        String
+  notes       String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy  User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  adjustments ScenarioAdjustment[]
+  analyticsRuns AnalyticsRun[]
+
+  @@map("scenarios")
+}
+
+enum ScenarioScopeType {
+  SEASON
+  COMPETITION
+  RUN_TYPE
+  RUN_RESULT
+}
+
+enum ScenarioAdjustmentType {
+  REMOVE_PENALTY_TAXONOMY
+  OVERRIDE_PENALTY_SECONDS
+  CLEAN_TIME_DELTA
+}
+
+model ScenarioAdjustment {
+  id                String                  @id @default(cuid())
+  scenarioId        String
+  scopeType         ScenarioScopeType
+  scopeId           String?                 // ID of the scoped entity (seasonId, competitionId, etc.)
+  adjustmentType    ScenarioAdjustmentType
+  payloadJson       Json                    // type-specific payload
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  scenario          Scenario                @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+
+  @@index([scenarioId])
+  @@index([scopeType, scopeId])
+  @@map("scenario_adjustments")
 }
