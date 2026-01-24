@@ -1,4 +1,4 @@
-﻿# Waterways Platform - Complete Documentation Bible
+# Waterways Platform - Complete Documentation Bible
 
 ## Table of Contents
 
@@ -19,10 +19,15 @@
 
 ### What is Waterways Platform?
 
-Waterways is a scalable sports analytics, coaching, and performance tracking platform. The first sport supported is Waterways competitions, with architecture designed to support multiple sports in the future.
+Waterways Platform is a performance-diagnostics system that quantifies not just how fast a team runs, but **why time is lost**, **where it can be recovered**, and **which skills matter most for improvement** — grounded directly in UFBA rules and event design.
+
+The platform is designed as a scalable sports analytics, coaching, and performance tracking system. The first sport supported is Waterways competitions, with architecture designed to support multiple sports in the future.
 
 ### Core Features
 
+- **Performance Diagnostics**: Quantify why time is lost and where it can be recovered
+- **Skill Impact Analysis**: Identify which skills matter most for improvement
+- **UFBA Rule Integration**: Grounded directly in UFBA rules and event design
 - **Competition Management**: Track seasons, competitions, and run results
 - **Run-Level Analytics**: Like-for-like diagnostics across run types (A1, A3, A5, etc.)
 - **Competition Trends**: Overall performance tracking with median clean times and penalty analysis

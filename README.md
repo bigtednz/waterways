@@ -1,6 +1,6 @@
 # Waterways Performance Tracking Platform
 
-A best-in-class performance tracking and coaching analytics platform for Waterways competitions.
+A performance-diagnostics system that quantifies not just how fast a team runs, but **why time is lost**, **where it can be recovered**, and **which skills matter most for improvement** — grounded directly in UFBA rules and event design.
 
 ## Features
 
