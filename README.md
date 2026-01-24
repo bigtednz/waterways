@@ -205,12 +205,22 @@ Insert into `run_specs` table with:
 
 ## Production Deployment
 
-The platform is designed to be Render-compatible:
+The platform is configured for **Railway** deployment:
 
-1. Set environment variables in Render dashboard
-2. Database: Use Render PostgreSQL or external provider
-3. API: Deploy as Node.js service
-4. Web: Deploy as static site (build with `npm run build`)
+1. **Railway Setup:**
+   - Create project at [railway.app](https://railway.app)
+   - Connect GitHub repository
+   - Add PostgreSQL database (Railway auto-creates `DATABASE_URL`)
+   - Set environment variables: `NODE_ENV=production`, `JWT_SECRET`
+
+2. **Automatic Deployment:**
+   - Railway uses `railway.json` for configuration
+   - Auto-deploys on push to main branch
+   - Runs migrations automatically on deploy
+
+3. **For detailed instructions:** See [RAILWAY_DEPLOYMENT.md](./RAILWAY_DEPLOYMENT.md)
+
+**Alternative:** The platform also supports Render deployment (see `render.yaml` for configuration).
 
 ## Testing
 

@@ -70,14 +70,14 @@ export async function loadRunResultsForDiagnostics(
         },
       },
     },
-    orderBy: {
-      competition: {
-        date: "asc",
-      },
-    },
   });
 
-  return runResults.map((rr) => ({
+  // Sort by competition date after fetching (more reliable than nested orderBy)
+  const sortedResults = runResults.sort((a, b) => 
+    a.competition.date.getTime() - b.competition.date.getTime()
+  );
+
+  return sortedResults.map((rr) => ({
     id: rr.id,
     competitionId: rr.competitionId,
     runTypeId: rr.runTypeId,

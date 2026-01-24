@@ -62,7 +62,8 @@ async function ensureSeeded() {
 }
 
 const app = express();
-const PORT = process.env.API_PORT || 3001;
+// Railway sets PORT automatically, fallback to API_PORT or default
+const PORT = process.env.PORT || process.env.API_PORT || 3001;
 
 app.use(cors());
 app.use(express.json());
