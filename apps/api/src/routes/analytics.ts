@@ -114,9 +114,7 @@ analyticsRouter.get("/run-diagnostics", async (req, res, next) => {
     const runResults = await prisma.runResult.findMany({
       where: { runTypeId: runType.id },
       include: {
-        competition: {
-          orderBy: { date: "asc" },
-        },
+        competition: true,
         penalties: {
           include: {
             penaltyRule: true,
