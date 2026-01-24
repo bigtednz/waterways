@@ -1059,6 +1059,98 @@ model PenaltyRule {
 }
 ```
 
+#### AnalyticsRun
+
+```prisma
+model AnalyticsRun {
+  id              String   @id @default(cuid())
+  analyticsVersion String
+  computationType  String   // "competition-trends", "run-diagnostics", "drivers"
+  paramsJson       Json     // stable, sorted JSON of input parameters
+  scopeType        String?  // "SEASON", "COMPETITION", "RUN_TYPE", "ALL"
+  scopeId          String?
+  scenarioId       String?
+  status           String   @default("completed")
+  durationMs       Int?
+  runAt            DateTime @default(now())
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  createdBy        User?    @relation(...)
+  scenario         Scenario? @relation(...)
+  artifacts        AnalyticsArtifact[]
+}
+```
+
+Tracks each analytics computation run for versioning and caching.
+
+#### AnalyticsArtifact
+
+```prisma
+model AnalyticsArtifact {
+  id              String       @id @default(cuid())
+  analyticsRunId  String
+  analyticsVersion String
+  artifactKey     String       // e.g., "competition-trends", "run-diagnostics:A3"
+  outputJson      Json         // computed output stored as JSON
+  metadata        Json?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  analyticsRun    AnalyticsRun @relation(...)
+}
+```
+
+Stores computed analytics outputs for caching and replay.
+
+#### Scenario
+
+```prisma
+model Scenario {
+  id          String   @id @default(cuid())
+  name        String
+  notes       String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy  User?    @relation(...)
+  adjustments ScenarioAdjustment[]
+  analyticsRuns AnalyticsRun[]
+}
+```
+
+Represents a scenario for "what-if" analysis.
+
+#### ScenarioAdjustment
+
+```prisma
+enum ScenarioScopeType {
+  SEASON
+  COMPETITION
+  RUN_TYPE
+  RUN_RESULT
+}
+
+enum ScenarioAdjustmentType {
+  REMOVE_PENALTY_TAXONOMY
+  OVERRIDE_PENALTY_SECONDS
+  CLEAN_TIME_DELTA
+}
+
+model ScenarioAdjustment {
+  id                String                  @id @default(cuid())
+  scenarioId        String
+  scopeType         ScenarioScopeType
+  scopeId           String?                 // ID of scoped entity
+  adjustmentType    ScenarioAdjustmentType
+  payloadJson       Json                    // type-specific payload
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  scenario          Scenario                @relation(...)
+}
+```
+
+Individual adjustments within a scenario.
+
 ### Database Migrations
 
 **Create Migration:**
