@@ -68,9 +68,29 @@ const PORT = process.env.PORT || process.env.API_PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// Development: show API info at root
-if (process.env.NODE_ENV !== "production") {
-  app.get("/", (req, res) => {
+// Root route - show API info in dev, serve frontend in production
+app.get("/", (req, res) => {
+  if (process.env.NODE_ENV === "production") {
+    // In production, try to serve the frontend
+    const indexPath = path.join(__dirname, "../../../web/dist/index.html");
+    res.sendFile(indexPath, (err) => {
+      if (err) {
+        // If frontend not found, show API info as fallback
+        res.json({ 
+          message: "Waterways API",
+          version: "1.0.0",
+          note: "Frontend not found - check build logs",
+          endpoints: {
+            health: "/health",
+            auth: "/api/auth",
+            seasons: "/api/seasons",
+            competitions: "/api/competitions"
+          }
+        });
+      }
+    });
+  } else {
+    // Development: show API info
     res.json({ 
       message: "Waterways API",
       version: "1.0.0",
@@ -85,8 +105,8 @@ if (process.env.NODE_ENV !== "production") {
         scenarios: "/api/scenarios"
       }
     });
-  });
-}
+  }
+});
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
@@ -136,16 +156,43 @@ app.use("/api/scenarios", scenariosRouter);
 
 app.use(errorHandler);
 
-// Serve static files from web app in production (must be after API routes)
-if (process.env.NODE_ENV === "production") {
-  const webDistPath = path.join(__dirname, "../../../web/dist");
-  app.use(express.static(webDistPath));
+// Serve static files from web app (must be after API routes)
+const webDistPath = path.join(__dirname, "../../../web/dist");
+const isProduction = process.env.NODE_ENV === "production";
+
+console.log(`NODE_ENV: ${process.env.NODE_ENV || "not set"}`);
+console.log(`Web dist path: ${webDistPath}`);
+
+// Always try to serve static files if they exist
+app.use(express.static(webDistPath));
+
+// Serve index.html for all non-API routes (SPA fallback)
+app.get("*", (req, res, next) => {
+  // Skip API routes and health check
+  if (req.path.startsWith("/api") || req.path === "/health") {
+    return next();
+  }
   
-  // Serve index.html for all non-API routes (SPA fallback)
-  app.get("*", (req, res) => {
-    res.sendFile(path.join(webDistPath, "index.html"));
+  const indexPath = path.join(webDistPath, "index.html");
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      console.error("Error serving index.html:", err.message);
+      // If frontend not found, return helpful error
+      res.status(404).json({ 
+        error: "Frontend not found",
+        message: "The frontend build may not exist. Check that the web app was built successfully.",
+        path: indexPath,
+        nodeEnv: process.env.NODE_ENV || "not set",
+        apiEndpoints: {
+          health: "/health",
+          auth: "/api/auth",
+          seasons: "/api/seasons",
+          competitions: "/api/competitions"
+        }
+      });
+    }
   });
-}
+});
 
 // Ensure database is seeded before starting server
 ensureSeeded().then(() => {
