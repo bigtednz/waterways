@@ -5,6 +5,7 @@ A performance-diagnostics system that quantifies not just how fast a team runs, 
 ## Features
 
 - **Competition Management**: Track seasons, competitions, and run results
+- **Competition Day & Run Queue**: Record competition days with flexible run queues that match the actual event order on the day
 - **Run-Level Analytics**: Like-for-like diagnostics across run types (A1, A3, A5, etc.)
 - **Competition Trends**: Overall performance tracking with median clean times and penalty analysis
 - **Coaching Insights**: Automated coaching summaries with drill recommendations
@@ -110,6 +111,15 @@ big-teds-sports-platform/
 
 ## Key Concepts
 
+### Competition Days & Run Queue
+**Competition Days** allow you to record a competition on the day with a flexible run queue:
+- The queue order matches the actual order events are run (which may differ from standard order)
+- Events can be marked as PLANNED, RUN, or SKIPPED
+- Reruns can be added as additional attempts for the same event
+- Quick-add buttons for common events (A1, A3, A5, A7, F9, F11, P13, P15, P17) or enter custom event codes
+- Reorder events using Move Up/Down buttons
+- This is the foundation for later recording official times, split times, penalties, and competitor team results
+
 ### Run Types
 Each competition contains multiple runs of different types (A1, A3, A5, etc.). Runs are NOT interchangeable - analytics compare like-for-like.
 
@@ -144,6 +154,16 @@ Clean time = Total time - Penalty time (guarded against negative values). This i
 - `POST /api/competitions` - Create competition
 - `PUT /api/competitions/:id` - Update competition
 - `DELETE /api/competitions/:id` - Delete competition
+
+### Competition Days
+- `GET /api/competition-days` - List competition days (newest first)
+- `GET /api/competition-days/:id` - Get competition day with queue items
+- `POST /api/competition-days` - Create competition day
+- `PUT /api/competition-days/:id` - Update competition day
+- `POST /api/competition-days/:id/queue` - Add queue item
+- `PUT /api/competition-days/queue/:id` - Update queue item (status, notes, attemptNo, eventCode)
+- `PUT /api/competition-days/:id/reorder` - Reorder queue items
+- `DELETE /api/competition-days/queue/:id` - Delete queue item
 
 ### Run Results
 - `GET /api/run-results` - List run results

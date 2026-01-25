@@ -19,7 +19,24 @@ export function LoginPage() {
       navigate("/app/dashboard");
     } catch (err: any) {
       console.error("Login error:", err);
-      const errorMessage = err.response?.data?.error || err.message || "Login failed. Please check your credentials.";
+      console.error("Error response:", err.response);
+      console.error("Error data:", err.response?.data);
+      
+      // Extract detailed error message
+      let errorMessage = "Login failed. Please check your credentials.";
+      if (err.response?.data) {
+        const data = err.response.data;
+        errorMessage = data.message || data.error || errorMessage;
+        if (data.code) {
+          errorMessage += ` (Code: ${data.code})`;
+        }
+        if (data.type) {
+          errorMessage += ` (Type: ${data.type})`;
+        }
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
       setError(errorMessage);
     } finally {
       setLoading(false);

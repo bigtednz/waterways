@@ -251,6 +251,12 @@ enum ScenarioAdjustmentType {
   CLEAN_TIME_DELTA
 }
 
+enum RunQueueStatus {
+  PLANNED
+  RUN
+  SKIPPED
+}
+
 model ScenarioAdjustment {
   id                String                  @id @default(cuid())
   scenarioId        String
@@ -266,4 +272,37 @@ model ScenarioAdjustment {
   @@index([scenarioId])
   @@index([scopeType, scopeId])
   @@map("scenario_adjustments")
+}
+
+model CompetitionDay {
+  id          String        @id @default(cuid())
+  date        DateTime      // Local date (stored as DateTime at midnight)
+  challengeName String
+  locationName String
+  trackName   String?
+  notes       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  queueItems  RunQueueItem[]
+
+  @@map("competition_days")
+}
+
+model RunQueueItem {
+  id              String          @id @default(cuid())
+  competitionDayId String
+  sequenceNo      Int
+  eventCode        String
+  status          RunQueueStatus  @default(PLANNED)
+  attemptNo       Int             @default(1)
+  notes           String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  competitionDay CompetitionDay  @relation(fields: [competitionDayId], references: [id], onDelete: Cascade)
+
+  @@unique([competitionDayId, sequenceNo])
+  @@index([competitionDayId])
+  @@map("run_queue_items")
 }

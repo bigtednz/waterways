@@ -7,6 +7,7 @@ import { existsSync } from "fs";
 import { authRouter } from "./routes/auth.js";
 import { seasonsRouter } from "./routes/seasons.js";
 import { competitionsRouter } from "./routes/competitions.js";
+import { competitionDaysRouter } from "./routes/competitionDays.js";
 import { runTypesRouter } from "./routes/runTypes.js";
 import { runResultsRouter } from "./routes/runResults.js";
 import { runSpecsRouter } from "./routes/runSpecs.js";
@@ -15,6 +16,7 @@ import { penaltyInterpretationRouter } from "./routes/penaltyInterpretation.js";
 import { analyticsRouter } from "./routes/analytics.js";
 import { scenariosRouter } from "./routes/scenarios.js";
 import { usersRouter } from "./routes/users.js";
+import { supportRouter } from "./routes/support.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { prisma } from "@waterways/db";
 import bcrypt from "bcryptjs";
@@ -111,8 +113,51 @@ app.get("/", (req, res) => {
   }
 });
 
-app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
+app.get("/health", async (req, res) => {
+  try {
+    // Test database connection
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ 
+      status: "ok",
+      database: "connected",
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Health check failed:", error);
+    res.status(500).json({
+      status: "error",
+      database: "disconnected",
+      error: error instanceof Error ? error.message : "Unknown error",
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// Debug endpoint to test database connection
+app.get("/api/debug/test-db", async (req, res) => {
+  try {
+    // Test basic connection
+    await prisma.$queryRaw`SELECT 1`;
+    
+    // Test if users table exists
+    const userCount = await prisma.user.count();
+    
+    res.json({
+      success: true,
+      database: "connected",
+      usersTable: "exists",
+      userCount,
+      prismaClient: "working",
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      code: error.code,
+      name: error.name,
+      meta: error.meta,
+    });
+  }
 });
 
 // Debug endpoint to check/reset admin user (remove in production)
@@ -150,6 +195,7 @@ app.post("/api/debug/reset-admin", async (req, res) => {
 app.use("/api/auth", authRouter);
 app.use("/api/seasons", seasonsRouter);
 app.use("/api/competitions", competitionsRouter);
+app.use("/api/competition-days", competitionDaysRouter);
 app.use("/api/run-types", runTypesRouter);
 app.use("/api/run-results", runResultsRouter);
 app.use("/api/run-specs", runSpecsRouter);
@@ -158,6 +204,7 @@ app.use("/api/penalties", penaltyInterpretationRouter);
 app.use("/api/analytics", analyticsRouter);
 app.use("/api/scenarios", scenariosRouter);
 app.use("/api/users", usersRouter);
+app.use("/api/support", supportRouter);
 
 app.use(errorHandler);
 

@@ -14,8 +14,8 @@ export const registerSchema = z.object({
 export const seasonSchema = z.object({
   name: z.string().min(1),
   year: z.number().int().min(2000).max(2100),
-  startDate: z.string().datetime().optional(),
-  endDate: z.string().datetime().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
 });
 
 export const competitionSchema = z.object({
@@ -103,4 +103,30 @@ export const scenarioAdjustmentSchema = z.object({
     "CLEAN_TIME_DELTA",
   ]),
   payloadJson: z.record(z.unknown()),
+});
+
+export const competitionDaySchema = z.object({
+  date: z.string().datetime(),
+  challengeName: z.string().min(1),
+  locationName: z.string().min(1),
+  trackName: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const runQueueItemSchema = z.object({
+  eventCode: z.string().min(1),
+  status: z.enum(["PLANNED", "RUN", "SKIPPED"]).default("PLANNED"),
+  attemptNo: z.number().int().positive().default(1),
+  notes: z.string().optional(),
+});
+
+export const runQueueItemUpdateSchema = z.object({
+  eventCode: z.string().min(1).optional(),
+  status: z.enum(["PLANNED", "RUN", "SKIPPED"]).optional(),
+  attemptNo: z.number().int().positive().optional(),
+  notes: z.string().optional(),
+});
+
+export const reorderQueueSchema = z.object({
+  queueItemIds: z.array(z.string()),
 });

@@ -42,15 +42,24 @@ authRouter.post("/register", async (req, res, next) => {
 authRouter.post("/login", async (req, res, next) => {
   try {
     console.log("Login attempt - email:", req.body?.email);
+    console.log("Request body:", JSON.stringify(req.body));
     
     // Validate input
     const validatedData = loginSchema.parse(req.body);
     const { email, password } = validatedData;
 
     console.log("Looking up user:", email);
-    const user = await prisma.user.findUnique({
-      where: { email },
-    });
+    let user;
+    try {
+      user = await prisma.user.findUnique({
+        where: { email },
+      });
+    } catch (dbError: any) {
+      console.error("Database query failed:", dbError);
+      console.error("Error code:", dbError.code);
+      console.error("Error meta:", dbError.meta);
+      throw dbError; // Re-throw to be caught by error handler
+    }
 
     if (!user) {
       console.log("User not found:", email);
@@ -92,6 +101,13 @@ authRouter.post("/login", async (req, res, next) => {
     if (error instanceof Error) {
       console.error("Error name:", error.name);
       console.error("Error message:", error.message);
+      console.error("Error stack:", error.stack);
+      
+      // Check for Prisma errors specifically
+      if ((error as any).code) {
+        console.error("Prisma error code:", (error as any).code);
+        console.error("Prisma error meta:", (error as any).meta);
+      }
     }
     next(error);
   }

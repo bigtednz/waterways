@@ -1,6 +1,9 @@
 import { Link } from "react-router-dom";
+import { useState } from "react";
+import { SupportModal } from "../components/SupportModal";
 
 export function LandingPage() {
+  const [supportModalOpen, setSupportModalOpen] = useState(false);
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
@@ -71,12 +74,12 @@ export function LandingPage() {
             >
               Sign In
             </Link>
-            <a
-              href="mailto:support@waterways.com"
+            <button
+              onClick={() => setSupportModalOpen(true)}
               className="inline-flex items-center justify-center px-8 py-3 border border-gray-300 text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 touch-manipulation min-h-[44px] transition-colors"
             >
               Contact Support
-            </a>
+            </button>
           </div>
         </div>
 
@@ -85,6 +88,8 @@ export function LandingPage() {
           <p>© {new Date().getFullYear()} Waterways - Big Teds Sports Analytics Platform</p>
         </footer>
       </div>
+
+      <SupportModal isOpen={supportModalOpen} onClose={() => setSupportModalOpen(false)} />
     </div>
   );
 }

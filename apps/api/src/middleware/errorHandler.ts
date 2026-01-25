@@ -15,10 +15,11 @@ export const errorHandler = (
 
   // Zod validation errors
   if (err.name === "ZodError" || (err as any).issues) {
+    const zodError = err as any;
     return res.status(400).json({
       error: "Validation error",
-      details: err.message,
-      issues: (err as any).issues,
+      message: zodError.errors?.[0]?.message || err.message,
+      details: zodError.errors || (err as any).issues,
     });
   }
 
@@ -65,9 +66,11 @@ export const errorHandler = (
   }
 
   // Default error response
+  const isDevelopment = process.env.NODE_ENV !== "production";
   res.status(500).json({
     error: "Internal server error",
-    message: process.env.NODE_ENV === "development" || process.env.NODE_ENV !== "production" ? err.message : "An unexpected error occurred",
+    message: isDevelopment ? err.message : "An unexpected error occurred",
     type: err.name,
+    ...(isDevelopment && err.stack ? { stack: err.stack } : {}),
   });
 };

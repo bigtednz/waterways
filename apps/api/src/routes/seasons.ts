@@ -66,8 +66,12 @@ seasonsRouter.post(
       const season = await prisma.season.create({
         data: {
           ...data,
-          startDate: data.startDate ? new Date(data.startDate) : null,
-          endDate: data.endDate ? new Date(data.endDate) : null,
+          startDate: data.startDate && data.startDate.trim() !== "" 
+            ? new Date(data.startDate) 
+            : null,
+          endDate: data.endDate && data.endDate.trim() !== "" 
+            ? new Date(data.endDate) 
+            : null,
         },
       });
       res.status(201).json(season);
@@ -87,8 +91,16 @@ seasonsRouter.put(
         where: { id: req.params.id },
         data: {
           ...data,
-          startDate: data.startDate ? new Date(data.startDate) : undefined,
-          endDate: data.endDate ? new Date(data.endDate) : undefined,
+          startDate: data.startDate && data.startDate.trim() !== "" 
+            ? new Date(data.startDate) 
+            : data.startDate === "" 
+            ? null 
+            : undefined,
+          endDate: data.endDate && data.endDate.trim() !== "" 
+            ? new Date(data.endDate) 
+            : data.endDate === "" 
+            ? null 
+            : undefined,
         },
       });
       res.json(season);

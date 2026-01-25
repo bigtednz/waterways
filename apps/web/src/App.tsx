@@ -6,6 +6,9 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { CompetitionsPage } from "./pages/CompetitionsPage";
 import { CompetitionDetailPage } from "./pages/CompetitionDetailPage";
 import { CreateCompetitionPage } from "./pages/CreateCompetitionPage";
+import { CompetitionDaysPage } from "./pages/CompetitionDaysPage";
+import { CreateCompetitionDayPage } from "./pages/CreateCompetitionDayPage";
+import { CompetitionDayDetailPage } from "./pages/CompetitionDayDetailPage";
 import { AnalysisPage } from "./pages/AnalysisPage";
 import { RunLibraryPage } from "./pages/RunLibraryPage";
 import { PenaltiesPage } from "./pages/PenaltiesPage";
@@ -38,6 +41,11 @@ function App() {
             <Route index element={<CompetitionsPage />} />
             <Route path="new" element={<CreateCompetitionPage />} />
             <Route path=":id" element={<CompetitionDetailPage />} />
+          </Route>
+          <Route path="competition-days">
+            <Route index element={<CompetitionDaysPage />} />
+            <Route path="new" element={<CreateCompetitionDayPage />} />
+            <Route path=":id" element={<CompetitionDayDetailPage />} />
           </Route>
           <Route path="analysis" element={<AnalysisPage />} />
           <Route path="run-library" element={<RunLibraryPage />} />

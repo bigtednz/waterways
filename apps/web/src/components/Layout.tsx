@@ -1,10 +1,12 @@
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { auth, User } from "../lib/auth";
+import { SupportModal } from "./SupportModal";
 
 const navItems = [
   { path: "/app/dashboard", label: "Dashboard" },
   { path: "/app/competitions", label: "Competitions" },
+  { path: "/app/competition-days", label: "Competition Days" },
   { path: "/app/analysis", label: "Analysis" },
   { path: "/app/run-library", label: "Run Library" },
   { path: "/app/penalties", label: "Penalties" },
@@ -15,6 +17,7 @@ export function Layout() {
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [supportModalOpen, setSupportModalOpen] = useState(false);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
 
@@ -149,12 +152,21 @@ export function Layout() {
                   (location.pathname.startsWith("/app/admin") ? "Admin" : "Big Teds Sports Analytics Platform")}
                 </h2>
               </div>
-              <button
-                onClick={auth.logout}
-                className="text-sm text-gray-600 hover:text-gray-800 px-2 py-1"
-              >
-                Logout
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setSupportModalOpen(true)}
+                  className="text-sm text-gray-600 hover:text-gray-800 px-2 py-1"
+                  title="Contact Support"
+                >
+                  Support
+                </button>
+                <button
+                  onClick={auth.logout}
+                  className="text-sm text-gray-600 hover:text-gray-800 px-2 py-1"
+                >
+                  Logout
+                </button>
+              </div>
             </div>
           </header>
           <main className="flex-1 overflow-y-auto p-4 sm:p-6">
@@ -162,6 +174,8 @@ export function Layout() {
           </main>
         </div>
       </div>
+
+      <SupportModal isOpen={supportModalOpen} onClose={() => setSupportModalOpen(false)} />
     </div>
   );
 }
