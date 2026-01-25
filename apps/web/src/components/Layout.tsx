@@ -67,16 +67,16 @@ export function Layout() {
         {/* Mobile sidebar overlay */}
         {sidebarOpen && (
           <div
-            className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+            className="fixed inset-0 bg-black bg-opacity-50 z-40 xl:hidden"
             onClick={() => setSidebarOpen(false)}
           />
         )}
 
         {/* Sidebar */}
         <aside
-          className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-gray-900 text-white transform ${
+          className={`fixed xl:static inset-y-0 left-0 z-50 w-56 xl:w-64 bg-gray-900 text-white transform ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
-          } lg:translate-x-0 transition-transform duration-300 ease-in-out`}
+          } xl:translate-x-0 transition-transform duration-300 ease-in-out`}
         >
           <div className="p-6">
             <div className="flex items-center justify-between">
@@ -86,7 +86,7 @@ export function Layout() {
               </div>
               <button
                 onClick={() => setSidebarOpen(false)}
-                className="lg:hidden text-gray-400 hover:text-white"
+                className="xl:hidden text-gray-400 hover:text-white"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -125,7 +125,7 @@ export function Layout() {
 
         {/* Main content */}
         <div 
-          className="flex-1 flex flex-col overflow-hidden lg:ml-0"
+          className="flex-1 flex flex-col overflow-hidden xl:ml-0"
           onTouchStart={onTouchStart}
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
@@ -135,7 +135,7 @@ export function Layout() {
               <div className="flex items-center gap-4">
                 <button
                   onClick={() => setSidebarOpen(true)}
-                  className="lg:hidden text-gray-600 hover:text-gray-800 p-2 -ml-2 touch-manipulation"
+                  className="xl:hidden text-gray-600 hover:text-gray-800 p-2 -ml-2 touch-manipulation"
                   aria-label="Open menu"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

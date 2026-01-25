@@ -11,12 +11,26 @@ let currentUser: User | null = null;
 
 export const auth = {
   async login(email: string, password: string) {
-    const { data } = await api.post("/auth/login", { email, password });
-    if (data.token) {
-      localStorage.setItem("token", data.token);
-      currentUser = data.user;
+    try {
+      const { data } = await api.post("/auth/login", { email, password });
+      if (data.token) {
+        localStorage.setItem("token", data.token);
+        currentUser = data.user;
+      }
+      return data;
+    } catch (error: any) {
+      console.error("Login API error:", error);
+      if (error.response) {
+        // Server responded with error
+        throw error;
+      } else if (error.request) {
+        // Request made but no response
+        throw new Error("Unable to connect to server. Please check your connection.");
+      } else {
+        // Something else happened
+        throw new Error("An unexpected error occurred during login.");
+      }
     }
-    return data;
   },
 
   async register(email: string, password: string, name?: string) {
