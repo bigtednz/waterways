@@ -118,7 +118,10 @@ big-teds-sports-platform/
 - Reruns can be added as additional attempts for the same event
 - Quick-add buttons for common events (A1, A3, A5, A7, F9, F11, P13, P15, P17) or enter custom event codes
 - Reorder events using Move Up/Down buttons
+- Add and edit notes for each queue item
 - This is the foundation for later recording official times, split times, penalties, and competitor team results
+
+**📖 For detailed usage instructions, see [Competition Day Guide](./docs/COMPETITION_DAY_GUIDE.md)**
 
 ### Run Types
 Each competition contains multiple runs of different types (A1, A3, A5, etc.). Runs are NOT interchangeable - analytics compare like-for-like.

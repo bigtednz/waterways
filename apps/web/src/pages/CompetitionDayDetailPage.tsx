@@ -46,6 +46,8 @@ export function CompetitionDayDetailPage() {
   const [error, setError] = useState("");
   const [customEventCode, setCustomEventCode] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
+  const [notesValue, setNotesValue] = useState("");
 
   useEffect(() => {
     if (id) {
@@ -152,6 +154,30 @@ export function CompetitionDayDetailPage() {
     } catch (err: any) {
       console.error("Failed to reorder:", err);
       alert(err.response?.data?.error || "Failed to reorder items");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const startEditingNotes = (item: RunQueueItem) => {
+    setEditingNotesId(item.id);
+    setNotesValue(item.notes || "");
+  };
+
+  const cancelEditingNotes = () => {
+    setEditingNotesId(null);
+    setNotesValue("");
+  };
+
+  const saveNotes = async (itemId: string) => {
+    setSaving(true);
+    try {
+      await updateQueueItem(itemId, { notes: notesValue.trim() || undefined });
+      setEditingNotesId(null);
+      setNotesValue("");
+    } catch (err: any) {
+      console.error("Failed to save notes:", err);
+      alert(err.response?.data?.error || "Failed to save notes");
     } finally {
       setSaving(false);
     }
@@ -301,8 +327,54 @@ export function CompetitionDayDetailPage() {
                           {item.status}
                         </span>
                       </div>
-                      {item.notes && (
-                        <p className="text-sm text-gray-600 mt-1">{item.notes}</p>
+                      {editingNotesId === item.id ? (
+                        <div className="mt-2 flex gap-2">
+                          <input
+                            type="text"
+                            value={notesValue}
+                            onChange={(e) => setNotesValue(e.target.value)}
+                            onKeyPress={(e) => {
+                              if (e.key === "Enter") {
+                                saveNotes(item.id);
+                              } else if (e.key === "Escape") {
+                                cancelEditingNotes();
+                              }
+                            }}
+                            className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Add notes..."
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => saveNotes(item.id)}
+                            disabled={saving}
+                            className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 disabled:opacity-50"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={cancelEditingNotes}
+                            disabled={saving}
+                            className="px-2 py-1 bg-gray-500 text-white text-xs rounded hover:bg-gray-600 disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="mt-1 flex items-center gap-2">
+                          {item.notes ? (
+                            <p className="text-sm text-gray-600">{item.notes}</p>
+                          ) : (
+                            <p className="text-sm text-gray-400 italic">No notes</p>
+                          )}
+                          <button
+                            onClick={() => startEditingNotes(item)}
+                            disabled={saving}
+                            className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                            title="Edit notes"
+                          >
+                            {item.notes ? "✏️" : "+ Notes"}
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
