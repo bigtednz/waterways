@@ -19,24 +19,45 @@ This guide explains how to deploy your application to Railway.
 3. Connect your `waterways` repository
 4. Railway will automatically detect the project
 
-### 3. Add PostgreSQL Database
+### 3. Add PostgreSQL Database ⚠️ CRITICAL STEP
+
+**This step is REQUIRED before deployment will work!**
 
 1. In your Railway project, click **"+ New"**
 2. Select **"Database"** → **"Add PostgreSQL"**
 3. Railway automatically creates a `DATABASE_URL` environment variable
-4. The database will be provisioned automatically
+4. **IMPORTANT:** Make sure the database service is in the same project as your web service
+5. Railway will automatically link the database to your web service
+6. The database will be provisioned automatically (takes 1-2 minutes)
+
+**Verify the connection:**
+- Go to your web service settings
+- Click on **"Variables"** tab
+- You should see `DATABASE_URL` automatically listed (it will be grayed out, meaning it's linked from the database service)
+- If `DATABASE_URL` is missing, the database isn't connected properly
 
 ### 4. Configure Environment Variables
 
-In your Railway service settings, add these environment variables:
+In your **web service** settings (not the database service), add these environment variables:
 
 **Required:**
 - `NODE_ENV` = `production`
 - `JWT_SECRET` = (generate a random secret, e.g., use `openssl rand -base64 32`)
-- `DATABASE_URL` = (automatically set by Railway from PostgreSQL service)
+
+**Automatic (DO NOT SET MANUALLY):**
+- `DATABASE_URL` = (automatically set by Railway when PostgreSQL database is connected - you should see this in Variables tab, grayed out)
 
 **Optional:**
 - `API_PORT` = `3001` (only needed if you want to override; Railway sets `PORT` automatically)
+
+**⚠️ Important:** If `DATABASE_URL` is not showing up automatically:
+1. Make sure the PostgreSQL database service exists in the same project
+2. Railway should auto-link it, but if not:
+   - Go to your web service → Settings → Variables
+   - Click "New Variable"
+   - Select "Reference Variable"
+   - Choose your PostgreSQL service
+   - Select `DATABASE_URL`
 
 ### 5. Deploy
 
@@ -227,6 +248,34 @@ Railway automatically provides SSL certificates for:
 1. Check migration files are committed to git
 2. Verify database is accessible
 3. Check migration logs in Railway deployment logs
+
+**Error:** `Error validating datasource 'db': You must provide a nonempty URL. The environment variable 'DATABASE_URL' resolved to an empty string.`
+
+**This is the most common deployment error!** It means `DATABASE_URL` is not set.
+
+**Solution:**
+1. **Add PostgreSQL Database Service:**
+   - In Railway project, click **"+ New"** → **"Database"** → **"Add PostgreSQL"**
+   - Wait for database to provision (1-2 minutes)
+
+2. **Verify Database Connection:**
+   - Go to your **web service** (not database service)
+   - Click **"Settings"** → **"Variables"** tab
+   - Look for `DATABASE_URL` in the list
+   - It should show as a **grayed-out variable** (meaning it's linked from the database service)
+   - If it's missing, the database isn't connected
+
+3. **Manually Link Database (if needed):**
+   - In web service → Settings → Variables
+   - Click **"New Variable"**
+   - Select **"Reference Variable"**
+   - Choose your **PostgreSQL service**
+   - Select **`DATABASE_URL`**
+   - Click **"Add"**
+
+4. **Redeploy:**
+   - After `DATABASE_URL` is set, trigger a new deployment
+   - Railway will automatically redeploy, or you can click **"Redeploy"** in the deployments tab
 
 ### Port Issues
 

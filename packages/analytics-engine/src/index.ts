@@ -1,4 +1,4 @@
-﻿// Main exports for analytics-engine package
+// Main exports for analytics-engine package
 export { ANALYTICS_VERSION } from "./utils.js";
 export type {
   RunResultData,
@@ -20,3 +20,11 @@ export {
 } from "./computations.js";
 
 export { applyScenarioAdjustments } from "./scenarios.js";
+
+export {
+  validateRunAgainstSpec,
+  getExpectedTimeFromSpec,
+  getProcedureStepsFromSpec,
+  compareToSpec,
+  type SpecValidationResult,
+} from "./specValidation.js";

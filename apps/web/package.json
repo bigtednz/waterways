@@ -5,18 +5,20 @@
   "scripts": {
     "dev": "vite",
     "build": "npx vite build",
+    "build:fix-esbuild": "node ../../node_modules/vite/node_modules/esbuild/install.js",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
     "@waterways/shared": "*",
+    "axios": "^1.6.5",
+    "clsx": "^2.1.0",
+    "date-fns": "^3.0.6",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^6.21.1",
     "recharts": "^2.10.3",
-    "axios": "^1.6.5",
-    "date-fns": "^3.0.6",
-    "clsx": "^2.1.0",
     "tailwind-merge": "^2.2.0"
   },
   "devDependencies": {

@@ -9,9 +9,78 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Prevent text selection on mobile for better UX */
+  -webkit-tap-highlight-color: transparent;
+  /* Improve touch scrolling */
+  -webkit-overflow-scrolling: touch;
 }
 
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
     monospace;
+}
+
+/* Mobile optimizations */
+@layer utilities {
+  .touch-manipulation {
+    touch-action: manipulation;
+  }
+  
+  /* Better scrolling on mobile */
+  .mobile-scroll {
+    -webkit-overflow-scrolling: touch;
+    overflow-scrolling: touch;
+  }
+  
+  /* Horizontal scrolling tables for mobile */
+  .mobile-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  
+  .mobile-table-container::-webkit-scrollbar {
+    height: 8px;
+  }
+  
+  .mobile-table-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+  }
+  
+  .mobile-table-container::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+  }
+  
+  /* Prevent zoom on input focus (iOS) */
+  @media screen and (max-width: 768px) {
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="number"],
+    textarea,
+    select {
+      font-size: 16px !important;
+    }
+    
+    /* Larger touch targets for mobile */
+    button,
+    a,
+    [role="button"] {
+      min-height: 44px;
+      min-width: 44px;
+    }
+    
+    /* Better spacing on mobile */
+    .mobile-padding {
+      padding: 1rem;
+    }
+  }
+  
+  /* Smooth transitions for mobile interactions */
+  @media (prefers-reduced-motion: no-preference) {
+    * {
+      transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    }
+  }
 }

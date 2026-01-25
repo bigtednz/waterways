@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import api from "../lib/api";
 import { formatDate, formatTime } from "../lib/utils";
 import type { CompetitionTrend } from "@waterways/shared";
+import { PenaltyInterpreter } from "../components/PenaltyInterpreter";
 
 interface RunResult {
   id: string;
@@ -31,8 +32,16 @@ export function CompetitionDetailPage() {
   const [competitionTrends, setCompetitionTrends] = useState<CompetitionTrend[]>([]);
   const [loadingTrends, setLoadingTrends] = useState(true);
 
+  // Redirect if "new" is passed as id (shouldn't happen with correct routing, but safety check)
   useEffect(() => {
-    if (!id) return;
+    if (id === "new") {
+      navigate("/app/competitions/new", { replace: true });
+      return;
+    }
+  }, [id, navigate]);
+
+  useEffect(() => {
+    if (!id || id === "new") return;
 
     Promise.all([
       api.get(`/competitions/${id}`).then((res) => setCompetition(res.data)),
@@ -70,6 +79,10 @@ export function CompetitionDetailPage() {
           notes: existing?.notes || "",
         };
       });
+      // Set default selected run type for interpreter
+      if (runTypes.length > 0 && !entry.selectedRunTypeForInterpreter) {
+        entry.selectedRunTypeForInterpreter = runTypes[0].code;
+      }
       setQuickEntry(entry);
     }
   }, [runTypes, competition]);
@@ -85,7 +98,7 @@ export function CompetitionDetailPage() {
   };
 
   const handleBulkSave = async () => {
-    if (!id) return;
+    if (!id || !competition) return;
 
     const runs = Object.entries(quickEntry)
       .filter(([_, data]) => data.totalTimeSeconds)
@@ -185,10 +198,6 @@ export function CompetitionDetailPage() {
   
   const bestPerformance = sortedTrends.length > 0
     ? Math.min(...sortedTrends.map((t) => t.medianCleanTime))
-    : null;
-  
-  const worstPerformance = sortedTrends.length > 0
-    ? Math.max(...sortedTrends.map((t) => t.medianCleanTime))
     : null;
   
   const seasonAverage = sortedTrends.length > 0
@@ -469,6 +478,56 @@ export function CompetitionDetailPage() {
           >
             Save All Runs
           </button>
+        </div>
+      </div>
+
+      {/* Penalty Interpreter - Available when adding runs */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="p-6 border-b">
+          <h2 className="text-lg font-semibold text-gray-900">Penalty Notes Interpreter</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Enter penalty notes to get structured diagnostics and coaching recommendations
+          </p>
+        </div>
+        <div className="p-6">
+          {runTypes.length > 0 ? (
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="interpreter-run-type" className="block text-sm font-medium text-gray-700 mb-2">
+                  Select Run Type
+                </label>
+                <select
+                  id="interpreter-run-type"
+                  value={quickEntry.selectedRunTypeForInterpreter || runTypes[0]?.code || ""}
+                  onChange={(e) => {
+                    const selectedCode = e.target.value;
+                    setQuickEntry((prev) => ({
+                      ...prev,
+                      selectedRunTypeForInterpreter: selectedCode,
+                    }));
+                  }}
+                  className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                >
+                  {runTypes.map((rt) => (
+                    <option key={rt.code} value={rt.code}>
+                      {rt.code} - {rt.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {quickEntry.selectedRunTypeForInterpreter && (
+                <PenaltyInterpreter
+                  key={`${quickEntry.selectedRunTypeForInterpreter}-${quickEntry[quickEntry.selectedRunTypeForInterpreter]?.notes || ""}`}
+                  runTypeCode={quickEntry.selectedRunTypeForInterpreter || runTypes[0]?.code || ""}
+                  initialNotes={quickEntry[quickEntry.selectedRunTypeForInterpreter || runTypes[0]?.code]?.notes || ""}
+                  competitionId={id}
+                  seasonId={competition?.season?.id}
+                />
+              )}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-center py-4">Loading run types...</p>
+          )}
         </div>
       </div>
 

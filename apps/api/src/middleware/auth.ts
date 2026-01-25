@@ -1,9 +1,17 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
-export interface AuthRequest extends Request {
+export interface AuthRequest extends Omit<Request, 'file'> {
   userId?: string;
   userRole?: string;
+  file?: {
+    fieldname: string;
+    originalname: string;
+    encoding: string;
+    mimetype: string;
+    size: number;
+    buffer: Buffer;
+  };
 }
 
 export const authenticate = (

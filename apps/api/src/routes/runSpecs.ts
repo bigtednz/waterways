@@ -5,9 +5,9 @@ import { authenticate, requireRole, AuthRequest } from "../middleware/auth.js";
 
 export const runSpecsRouter = Router();
 
-runSpecsRouter.use(authenticate);
-
-runSpecsRouter.get("/:runTypeCode", async (req, res, next) => {
+// Markdown route is public (documentation only) - must be defined before authenticate middleware
+// and before /:runTypeCode/:version to avoid route conflicts
+runSpecsRouter.get("/:runTypeCode/markdown", async (req, res, next) => {
   try {
     const runType = await prisma.runType.findUnique({
       where: { code: req.params.runTypeCode },
@@ -19,11 +19,86 @@ runSpecsRouter.get("/:runTypeCode", async (req, res, next) => {
       },
     });
 
+    if (!runType || !runType.runSpecs[0]?.markdownPath) {
+      return res.status(404).json({ error: "Markdown documentation not found" });
+    }
+
+    const markdownPath = runType.runSpecs[0].markdownPath;
+    
+    // Read markdown file from docs directory
+    const fs = await import("fs/promises");
+    const pathModule = await import("path");
+    const { fileURLToPath } = await import("url");
+    const { existsSync } = await import("fs");
+    
+    // Get project root by going up from API directory
+    // In dev (tsx): apps/api/src/routes -> go up 3 levels
+    // In prod (compiled): apps/api/dist/routes -> go up 4 levels
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = pathModule.dirname(__filename);
+    
+    // Try going up 4 levels first (production), then 3 levels (development)
+    let projectRoot = pathModule.resolve(__dirname, "../../../..");
+    const testPath = pathModule.join(projectRoot, "docs", "runs");
+    if (!existsSync(testPath)) {
+      // Try 3 levels for development mode
+      projectRoot = pathModule.resolve(__dirname, "../../..");
+    }
+    
+    // Markdown path is relative to project root (e.g., /docs/runs/A1.md or docs/runs/A1.md)
+    // Remove leading slash and resolve from project root
+    const cleanPath = markdownPath.replace(/^\//, "");
+    const filePath = pathModule.join(projectRoot, cleanPath);
+    
+    if (!existsSync(filePath)) {
+      console.error(`[/run-specs/${req.params.runTypeCode}/markdown] File not found: ${filePath}`);
+      return res.status(404).json({ 
+        error: "Markdown file not found",
+        requestedPath: markdownPath,
+        resolvedPath: filePath,
+        projectRoot: projectRoot
+      });
+    }
+    
+    try {
+      const content = await fs.readFile(filePath, "utf-8");
+      res.json({ content, path: markdownPath });
+    } catch (fileError) {
+      console.error(`[/run-specs/${req.params.runTypeCode}/markdown] Error reading file:`, fileError);
+      return res.status(500).json({ 
+        error: "Error reading markdown file",
+        message: fileError instanceof Error ? fileError.message : "Unknown error",
+        path: filePath 
+      });
+    }
+  } catch (error) {
+    next(error);
+  }
+});
+
+runSpecsRouter.use(authenticate);
+
+runSpecsRouter.get("/:runTypeCode", async (req, res, next) => {
+  try {
+    console.log("[/run-specs] Request received for runTypeCode:", req.params.runTypeCode);
+    const runType = await prisma.runType.findUnique({
+      where: { code: req.params.runTypeCode },
+      include: {
+        runSpecs: {
+          orderBy: { version: "desc" },
+          take: 1,
+        },
+      },
+    });
+
     if (!runType) {
+      console.log("[/run-specs] Error: Run type not found:", req.params.runTypeCode);
       return res.status(404).json({ error: "Run type not found" });
     }
 
+    console.log("[/run-specs] Run type found:", runType.id, "with", runType.runSpecs.length, "specs");
     const latestSpec = runType.runSpecs[0] || null;
+    console.log("[/run-specs] Sending response");
     res.json({
       runType: {
         id: runType.id,
@@ -33,6 +108,14 @@ runSpecsRouter.get("/:runTypeCode", async (req, res, next) => {
       spec: latestSpec,
     });
   } catch (error) {
+    console.error("[/run-specs] Error:", error);
+    if (error instanceof Error) {
+      console.error("[/run-specs] Error name:", error.name);
+      console.error("[/run-specs] Error message:", error.message);
+      if (error.stack) {
+        console.error("[/run-specs] Error stack:", error.stack);
+      }
+    }
     next(error);
   }
 });

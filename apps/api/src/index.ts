@@ -11,8 +11,10 @@ import { runTypesRouter } from "./routes/runTypes.js";
 import { runResultsRouter } from "./routes/runResults.js";
 import { runSpecsRouter } from "./routes/runSpecs.js";
 import { penaltyRulesRouter } from "./routes/penaltyRules.js";
+import { penaltyInterpretationRouter } from "./routes/penaltyInterpretation.js";
 import { analyticsRouter } from "./routes/analytics.js";
 import { scenariosRouter } from "./routes/scenarios.js";
+import { usersRouter } from "./routes/users.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { prisma } from "@waterways/db";
 import bcrypt from "bcryptjs";
@@ -152,8 +154,10 @@ app.use("/api/run-types", runTypesRouter);
 app.use("/api/run-results", runResultsRouter);
 app.use("/api/run-specs", runSpecsRouter);
 app.use("/api/penalty-rules", penaltyRulesRouter);
+app.use("/api/penalties", penaltyInterpretationRouter);
 app.use("/api/analytics", analyticsRouter);
 app.use("/api/scenarios", scenariosRouter);
+app.use("/api/users", usersRouter);
 
 app.use(errorHandler);
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { auth } from "../lib/auth";
 
 export function LoginPage() {
@@ -25,10 +25,10 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-8">
+      <div className="max-w-md w-full space-y-8 p-6 sm:p-8 bg-white rounded-lg shadow">
         <div>
-          <h2 className="text-3xl font-bold text-center text-gray-900">
+          <h2 className="text-2xl sm:text-3xl font-bold text-center text-gray-900">
             Big Teds Sports Analytics Platform
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
@@ -49,9 +49,10 @@ export function LoginPage() {
               id="email"
               type="email"
               required
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="mt-1 block w-full px-3 py-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-base touch-manipulation"
             />
           </div>
           <div>
@@ -62,22 +63,28 @@ export function LoginPage() {
               id="password"
               type="password"
               required
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="mt-1 block w-full px-3 py-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-base touch-manipulation"
             />
           </div>
           <button
             type="submit"
             disabled={loading}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+            className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 touch-manipulation min-h-[44px]"
           >
             {loading ? "Signing in..." : "Sign in"}
           </button>
         </form>
-        <p className="text-xs text-center text-gray-500">
-          Default: admin@waterways.com / admin123
-        </p>
+        <div className="text-center">
+          <Link
+            to="/"
+            className="text-sm text-blue-600 hover:text-blue-800 underline"
+          >
+            ← Back to home
+          </Link>
+        </div>
       </div>
     </div>
   );

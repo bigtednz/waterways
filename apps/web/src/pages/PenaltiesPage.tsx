@@ -230,7 +230,7 @@ export function PenaltiesPage() {
 
           <div className="pt-4 border-t border-red-200">
             <Link
-              to="/analysis"
+              to="/app/analysis"
               className="text-sm text-blue-600 hover:text-blue-700 font-medium"
             >
               View Detailed Analysis →

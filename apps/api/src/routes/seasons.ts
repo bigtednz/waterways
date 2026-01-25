@@ -9,6 +9,7 @@ seasonsRouter.use(authenticate);
 
 seasonsRouter.get("/", async (req, res, next) => {
   try {
+    console.log("Fetching seasons...");
     const seasons = await prisma.season.findMany({
       orderBy: { year: "desc" },
       include: {
@@ -20,8 +21,17 @@ seasonsRouter.get("/", async (req, res, next) => {
         },
       },
     });
+    console.log(`Found ${seasons.length} seasons`);
     res.json(seasons);
   } catch (error) {
+    console.error("Error fetching seasons:", error);
+    if (error instanceof Error) {
+      console.error("Error name:", error.name);
+      console.error("Error message:", error.message);
+      if (error.stack) {
+        console.error("Error stack:", error.stack);
+      }
+    }
     next(error);
   }
 });

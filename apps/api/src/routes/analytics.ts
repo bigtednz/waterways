@@ -14,6 +14,9 @@ import {
   computeRunDiagnostics,
   computeDrivers,
   applyScenarioAdjustments,
+  validateRunAgainstSpec,
+  compareToSpec,
+  getExpectedTimeFromSpec,
 } from "@waterways/analytics-engine";
 import {
   loadCompetitionsForAnalytics,
@@ -119,26 +122,35 @@ analyticsRouter.get("/competition-trends", async (req, res, next) => {
 
 analyticsRouter.get("/run-diagnostics", async (req, res, next) => {
   try {
+    console.log("[/analytics/run-diagnostics] Request received");
     const startTime = Date.now();
     const runTypeCode = req.query.runTypeCode as string;
     const windowSize = parseInt(req.query.windowSize as string) || 3;
     const scenarioId = req.query.scenarioId as string | undefined;
     const persist = req.query.persist === "true";
 
+    console.log("[/analytics/run-diagnostics] Params:", { runTypeCode, windowSize, scenarioId });
+
     if (!runTypeCode) {
+      console.log("[/analytics/run-diagnostics] Error: runTypeCode is required");
       return res.status(400).json({ error: "runTypeCode is required" });
     }
 
+    console.log("[/analytics/run-diagnostics] Looking up run type:", runTypeCode);
     const runType = await prisma.runType.findUnique({
       where: { code: runTypeCode },
     });
 
     if (!runType) {
+      console.log("[/analytics/run-diagnostics] Error: Run type not found:", runTypeCode);
       return res.status(404).json({ error: "Run type not found" });
     }
 
+    console.log("[/analytics/run-diagnostics] Run type found:", runType.id);
     // Load baseline data
+    console.log("[/analytics/run-diagnostics] Loading run results...");
     let runResults = await loadRunResultsForDiagnostics(runType.id);
+    console.log("[/analytics/run-diagnostics] Loaded", runResults.length, "run results");
 
     // Apply scenario adjustments if provided
     if (scenarioId) {
@@ -154,7 +166,9 @@ analyticsRouter.get("/run-diagnostics", async (req, res, next) => {
     }
 
     // Compute diagnostics using analytics engine
+    console.log("[/analytics/run-diagnostics] Computing diagnostics...");
     const diagnostic = computeRunDiagnostics(runResults, windowSize);
+    console.log("[/analytics/run-diagnostics] Diagnostics computed");
 
     // Fill in competition details
     const competitions = await prisma.competition.findMany({
@@ -197,6 +211,7 @@ analyticsRouter.get("/run-diagnostics", async (req, res, next) => {
     });
 
     const durationMs = Date.now() - startTime;
+    console.log("[/analytics/run-diagnostics] Completed in", durationMs, "ms");
 
     // Optionally persist results
     if (persist) {
@@ -219,6 +234,7 @@ analyticsRouter.get("/run-diagnostics", async (req, res, next) => {
     if (scenarioId) {
       const baselineRunResults = await loadRunResultsForDiagnostics(runType.id);
       const baseline = computeRunDiagnostics(baselineRunResults, windowSize);
+      console.log("[/analytics/run-diagnostics] Sending response with baseline");
       res.json({
         baseline,
         scenario: diagnostic,
@@ -228,9 +244,18 @@ analyticsRouter.get("/run-diagnostics", async (req, res, next) => {
         },
       });
     } else {
+      console.log("[/analytics/run-diagnostics] Sending response");
       res.json(diagnostic);
     }
   } catch (error) {
+    console.error("[/analytics/run-diagnostics] Error:", error);
+    if (error instanceof Error) {
+      console.error("[/analytics/run-diagnostics] Error name:", error.name);
+      console.error("[/analytics/run-diagnostics] Error message:", error.message);
+      if (error.stack) {
+        console.error("[/analytics/run-diagnostics] Error stack:", error.stack);
+      }
+    }
     next(error);
   }
 });
@@ -435,6 +460,136 @@ analyticsRouter.get("/coaching-summary", async (req, res, next) => {
     };
 
     res.json(summary);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Validate a run result against its specification
+analyticsRouter.get("/validate-run", async (req, res, next) => {
+  try {
+    const runResultId = req.query.runResultId as string;
+    const runTypeCode = req.query.runTypeCode as string;
+
+    if (!runResultId && !runTypeCode) {
+      return res.status(400).json({ 
+        error: "Either runResultId or runTypeCode is required" 
+      });
+    }
+
+    // Load run result if ID provided
+    let runResult;
+    let runTypeCodeFromResult: string | undefined;
+
+    if (runResultId) {
+      const result = await prisma.runResult.findUnique({
+        where: { id: runResultId },
+        include: {
+          runType: true,
+        },
+      });
+
+      if (!result) {
+        return res.status(404).json({ error: "Run result not found" });
+      }
+
+      const cleanTime = result.totalTimeSeconds - result.penaltySeconds;
+      runResult = {
+        cleanTime,
+        penaltySeconds: result.penaltySeconds,
+        totalTimeSeconds: result.totalTimeSeconds,
+      };
+      runTypeCodeFromResult = result.runType.code;
+    }
+
+    // Use provided runTypeCode or from result
+    const code = runTypeCode || runTypeCodeFromResult;
+    if (!code) {
+      return res.status(400).json({ error: "Run type code is required" });
+    }
+
+    // Load specification
+    const runType = await prisma.runType.findUnique({
+      where: { code },
+      include: {
+        runSpecs: {
+          orderBy: { version: "desc" },
+          take: 1,
+        },
+      },
+    });
+
+    if (!runType) {
+      return res.status(404).json({ error: "Run type not found" });
+    }
+
+    if (!runType.runSpecs || runType.runSpecs.length === 0) {
+      return res.status(404).json({ 
+        error: "No specification found for this run type",
+        message: "Add a specification via the Admin page to enable validation"
+      });
+    }
+
+    const latestSpec = runType.runSpecs[0];
+    if (!latestSpec || !latestSpec.jsonSpec) {
+      return res.status(404).json({ 
+        error: "Invalid specification found",
+        message: "The specification exists but has no JSON data"
+      });
+    }
+
+    const spec = latestSpec.jsonSpec as any;
+
+    // If run result provided, validate it
+    if (runResult) {
+      const validation = validateRunAgainstSpec(runResult, spec);
+      const comparison = compareToSpec(
+        { cleanTime: runResult.cleanTime, penaltySeconds: runResult.penaltySeconds },
+        spec
+      );
+      const expectedTime = getExpectedTimeFromSpec(spec);
+
+      return res.json({
+        runType: {
+          code: runType.code,
+          name: runType.name,
+        },
+        specVersion: latestSpec.version,
+        runResult: runResultId ? {
+          id: runResultId,
+          cleanTime: runResult.cleanTime,
+          penaltySeconds: runResult.penaltySeconds,
+        } : {
+          cleanTime: runResult.cleanTime,
+          penaltySeconds: runResult.penaltySeconds,
+        },
+        validation,
+        comparison,
+        expectedTime,
+        specStructure: {
+          hasTimeLimits: !!spec.timeLimits,
+          hasPhases: !!spec.procedure?.phases,
+          hasPenalties: !!spec.penalties,
+        },
+      });
+    }
+
+    // If no run result, just return spec info
+    return res.json({
+      runType: {
+        code: runType.code,
+        name: runType.name,
+      },
+      specVersion: runType.runSpecs[0].version,
+      expectedTime: getExpectedTimeFromSpec(spec),
+      specStructure: {
+        hasTimeLimits: !!spec.timeLimits,
+        hasPhases: !!spec.procedure?.phases,
+        hasPenalties: !!spec.penalties,
+        timeLimits: spec.timeLimits || null,
+      },
+      message: "No run result provided. Include runResultId to validate a specific run.",
+    });
   } catch (error) {
     next(error);
   }

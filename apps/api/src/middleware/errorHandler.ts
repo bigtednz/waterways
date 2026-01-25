@@ -24,10 +24,35 @@ export const errorHandler = (
 
   // Prisma errors
   if (err.name === "PrismaClientKnownRequestError" || err.name === "PrismaClientUnknownRequestError") {
-    console.error("Prisma error code:", (err as any).code);
+    const prismaError = err as any;
+    console.error("Prisma error code:", prismaError.code);
+    console.error("Prisma error meta:", prismaError.meta);
+    
+    // Common Prisma error codes
+    if (prismaError.code === "P2021") {
+      // Table does not exist
+      return res.status(500).json({
+        error: "Database error",
+        message: `Table does not exist: ${prismaError.meta?.table || "unknown"}. Run migrations: npm run db:migrate`,
+        code: prismaError.code,
+        table: prismaError.meta?.table,
+      });
+    }
+    
+    if (prismaError.code === "P1001") {
+      // Can't reach database server
+      return res.status(500).json({
+        error: "Database connection error",
+        message: "Cannot reach database server. Check that PostgreSQL is running: docker-compose up -d",
+        code: prismaError.code,
+      });
+    }
+    
     return res.status(500).json({
       error: "Database error",
       message: process.env.NODE_ENV === "development" ? err.message : "A database error occurred",
+      code: prismaError.code,
+      meta: process.env.NODE_ENV === "development" ? prismaError.meta : undefined,
     });
   }
 

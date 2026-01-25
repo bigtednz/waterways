@@ -258,7 +258,7 @@ export function DashboardPage() {
           <p className="text-gray-600 mt-1">Performance diagnostics and actionable insights</p>
         </div>
         <Link
-          to="/analysis"
+          to="/app/analysis"
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           View Full Analysis
@@ -711,7 +711,7 @@ export function DashboardPage() {
           </Link>
           {topIssues.length > 0 && (
             <Link
-              to="/penalties"
+              to="/app/penalties"
               className="p-4 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors"
             >
               <div className="text-red-700 font-semibold text-sm">Fix Top Issue</div>
@@ -736,7 +736,7 @@ export function DashboardPage() {
           <div className="flex justify-between items-center">
             <h2 className="text-xl font-semibold text-gray-900">Recent Competitions</h2>
             <Link
-              to="/competitions"
+              to="/app/competitions"
               className="text-sm text-blue-600 hover:text-blue-700 font-medium"
             >
               View All →
