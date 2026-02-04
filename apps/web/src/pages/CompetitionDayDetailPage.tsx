@@ -37,6 +37,7 @@ import { ConfirmationDialog } from "../components/ConfirmationDialog";
 import { exportToCSV, exportToPDF, copyShareableLink } from "../lib/exportUtils";
 import { onOnlineStatusChange, syncQueuedActions } from "../lib/offlineUtils";
 import { getAllInsights, Insight } from "../lib/aiInsights";
+import { analyzePacing } from "../lib/pacingAnalyzer";
 
 interface RunQueueItem {
   id: string;
@@ -102,8 +103,8 @@ export function CompetitionDayDetailPage() {
   });
   const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
   const [notesValue, setNotesValue] = useState("");
-  const [timeEntries, setTimeEntries] = useState<Record<string, { totalTime: string; penalty: string; splitTimes: Record<string, string> }>>({});
-  const [validationErrors, setValidationErrors] = useState<Record<string, { totalTime?: string; penalty?: string; splitTimes?: Record<string, string> }>>({});
+  const [timeEntries, setTimeEntries] = useState<Record<string, { cleanTime: string; penalty: string; splitTimes: Record<string, string> }>>({});
+  const [validationErrors, setValidationErrors] = useState<Record<string, { cleanTime?: string; penalty?: string; splitTimes?: Record<string, string> }>>({});
   const [runSpecs, setRunSpecs] = useState<Record<string, { phases: RunSpecPhase[] }>>({});
   const runSpecsRef = useRef(runSpecs);
   
@@ -113,7 +114,7 @@ export function CompetitionDayDetailPage() {
   }, [runSpecs]);
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [showCompetitorForm, setShowCompetitorForm] = useState<Record<string, boolean>>({});
-  const [competitorForms, setCompetitorForms] = useState<Record<string, { teamName: string; totalTime: string; penalty: string; splitTimes: Record<string, string>; notes?: string }>>({});
+  const [competitorForms, setCompetitorForms] = useState<Record<string, { teamName: string; cleanTime: string; penalty: string; splitTimes: Record<string, string>; notes?: string }>>({});
   const [editingCompetitorId, setEditingCompetitorId] = useState<string | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -147,14 +148,18 @@ export function CompetitionDayDetailPage() {
       
       setCompetitionDay(newData);
       // Initialize time entries from existing data
-      const entries: Record<string, { totalTime: string; penalty: string; splitTimes: Record<string, string> }> = {};
+      const entries: Record<string, { cleanTime: string; penalty: string; splitTimes: Record<string, string> }> = {};
       if (newData.queueItems && Array.isArray(newData.queueItems)) {
         newData.queueItems.forEach((item: RunQueueItem) => {
+          // Calculate time from stored total time and penalty
+          const totalTime = item.totalTimeSeconds || 0;
+          const penalty = item.penaltySeconds || 0;
+          const time = roundToTwoDecimals(Math.max(0, totalTime - penalty));
           entries[item.id] = {
-            totalTime: item.totalTimeSeconds?.toString() || "",
-            penalty: item.penaltySeconds?.toString() || "0",
+            cleanTime: time > 0 ? time.toFixed(2) : "",
+            penalty: roundToTwoDecimals(penalty).toFixed(2),
             splitTimes: item.splitTimes ? Object.fromEntries(
-              Object.entries(item.splitTimes).map(([k, v]) => [k, v.toString()])
+              Object.entries(item.splitTimes).map(([k, v]) => [k, roundToTwoDecimals(v).toFixed(2)])
             ) : {},
           };
         });
@@ -306,26 +311,38 @@ export function CompetitionDayDetailPage() {
     return () => clearInterval(interval);
   }, [id, isOffline]);
 
+  // Helper function to round to 2 decimal places
+  const roundToTwoDecimals = (value: number): number => {
+    return Math.round(value * 100) / 100;
+  };
+
   // Validation functions
-  const validateTimeEntry = useCallback((itemId: string, entry: { totalTime: string; penalty: string; splitTimes: Record<string, string> }) => {
-    const errors: { totalTime?: string; penalty?: string; splitTimes?: Record<string, string> } = {};
+  const validateTimeEntry = useCallback((itemId: string, entry: { cleanTime: string; penalty: string; splitTimes: Record<string, string> }) => {
+    const errors: { cleanTime?: string; penalty?: string; splitTimes?: Record<string, string> } = {};
     
-    if (entry.totalTime.trim()) {
-      const totalTime = parseFloat(entry.totalTime);
-      if (isNaN(totalTime) || totalTime <= 0) {
-        errors.totalTime = "Total time must be a positive number";
-      } else if (totalTime >= 1000) {
-        errors.totalTime = "Total time must be less than 1000 seconds";
+    if (entry.cleanTime.trim()) {
+      const time = parseFloat(entry.cleanTime);
+      if (isNaN(time) || time <= 0) {
+        errors.cleanTime = "Time must be a positive number";
+      } else if (time >= 1000) {
+        errors.cleanTime = "Time must be less than 1000 seconds";
+      } else {
+        // Check decimal places
+        const decimalPlaces = (entry.cleanTime.split('.')[1] || '').length;
+        if (decimalPlaces > 2) {
+          errors.cleanTime = "Time must have at most 2 decimal places";
+        }
       }
     }
 
     const penalty = parseFloat(entry.penalty) || 0;
     if (isNaN(penalty) || penalty < 0) {
       errors.penalty = "Penalty must be a non-negative number";
-    } else if (entry.totalTime.trim()) {
-      const totalTime = parseFloat(entry.totalTime);
-      if (!isNaN(totalTime) && penalty >= totalTime) {
-        errors.penalty = "Penalty must be less than total time";
+    } else if (entry.penalty.trim()) {
+      // Check decimal places
+      const decimalPlaces = (entry.penalty.split('.')[1] || '').length;
+      if (decimalPlaces > 2) {
+        errors.penalty = "Penalty must have at most 2 decimal places";
       }
     }
 
@@ -339,18 +356,25 @@ export function CompetitionDayDetailPage() {
           if (isNaN(time) || time <= 0) {
             splitErrors[phaseId] = "Must be a positive number";
           } else {
-            totalSplitTime += time;
+            // Check decimal places
+            const decimalPlaces = (timeStr.split('.')[1] || '').length;
+            if (decimalPlaces > 2) {
+              splitErrors[phaseId] = "Must have at most 2 decimal places";
+            } else {
+              totalSplitTime += time;
+            }
           }
         }
       }
       if (Object.keys(splitErrors).length > 0) {
         errors.splitTimes = splitErrors;
       }
-      if (entry.totalTime.trim() && totalSplitTime > 0) {
-        const totalTime = parseFloat(entry.totalTime);
-        if (!isNaN(totalTime) && totalSplitTime > totalTime) {
+      // Validate split times against time (not total time)
+      if (entry.cleanTime.trim() && totalSplitTime > 0) {
+        const time = parseFloat(entry.cleanTime);
+        if (!isNaN(time) && totalSplitTime > time) {
           if (!errors.splitTimes) errors.splitTimes = {};
-          errors.splitTimes._sum = "Sum of split times cannot exceed total time";
+          errors.splitTimes._sum = "Sum of split times cannot exceed time";
         }
       }
     }
@@ -612,11 +636,20 @@ export function CompetitionDayDetailPage() {
     }
   };
 
-  const handleTimeChange = (itemId: string, field: "totalTime" | "penalty", value: string) => {
+  const handleTimeChange = (itemId: string, field: "cleanTime" | "penalty", value: string) => {
     setTimeEntries((prev) => {
+      // Format to 2 decimal places if it's a valid number
+      let formattedValue = value;
+      if (value && value.trim() && !isNaN(parseFloat(value))) {
+        const num = parseFloat(value);
+        if (!isNaN(num)) {
+          formattedValue = roundToTwoDecimals(num).toFixed(2);
+        }
+      }
+      
       const newEntry = {
-        ...prev[itemId] || { totalTime: "", penalty: "0", splitTimes: {} },
-        [field]: value,
+        ...prev[itemId] || { cleanTime: "", penalty: "0.00", splitTimes: {} },
+        [field]: formattedValue,
       };
       // Validate on change
       validateTimeEntry(itemId, newEntry);
@@ -629,11 +662,20 @@ export function CompetitionDayDetailPage() {
 
   const handleSplitTimeChange = (itemId: string, phaseId: string, value: string) => {
     setTimeEntries((prev) => {
+      // Format to 2 decimal places if it's a valid number
+      let formattedValue = value;
+      if (value && value.trim() && !isNaN(parseFloat(value))) {
+        const num = parseFloat(value);
+        if (!isNaN(num)) {
+          formattedValue = roundToTwoDecimals(num).toFixed(2);
+        }
+      }
+      
       const newEntry = {
-        ...prev[itemId] || { totalTime: "", penalty: "0", splitTimes: {} },
+        ...prev[itemId] || { cleanTime: "", penalty: "0.00", splitTimes: {} },
         splitTimes: {
           ...(prev[itemId]?.splitTimes || {}),
-          [phaseId]: value,
+          [phaseId]: formattedValue,
         },
       };
       // Validate on change
@@ -661,16 +703,19 @@ export function CompetitionDayDetailPage() {
     }));
 
     // Optimistic update
+    // Calculate total time from clean time + penalty (penalties are ADDED to clean time)
     const previousState = competitionDay;
     const updates: any = {};
-    if (entry.totalTime.trim()) {
-      const totalTime = parseFloat(entry.totalTime);
-      updates.totalTimeSeconds = totalTime;
+    const cleanTime = entry.cleanTime.trim() ? roundToTwoDecimals(parseFloat(entry.cleanTime)) : null;
+    const penalty = roundToTwoDecimals(parseFloat(entry.penalty) || 0);
+    
+    if (cleanTime !== null && !isNaN(cleanTime) && cleanTime > 0) {
+      // Total time = clean time + penalty (penalties are added, not subtracted)
+      updates.totalTimeSeconds = roundToTwoDecimals(cleanTime + penalty);
     } else {
       updates.totalTimeSeconds = null;
     }
 
-    const penalty = parseFloat(entry.penalty) || 0;
     updates.penaltySeconds = penalty;
 
     // Process split times
@@ -781,11 +826,11 @@ export function CompetitionDayDetailPage() {
       addingCompetitor: { ...prev.addingCompetitor, [itemId]: true },
     }));
 
-    const totalTime = form.totalTime.trim() ? parseFloat(form.totalTime) : undefined;
-    const penalty = form.penalty.trim() ? parseFloat(form.penalty) || 0 : 0;
+    const time = form.cleanTime.trim() ? roundToTwoDecimals(parseFloat(form.cleanTime)) : undefined;
+    const penalty = roundToTwoDecimals(parseFloat(form.penalty) || 0);
     
-    if (totalTime !== undefined && (isNaN(totalTime) || totalTime <= 0)) {
-      toast.error("Total time must be a positive number");
+    if (time !== undefined && (isNaN(time) || time <= 0)) {
+      toast.error("Time must be a positive number");
       setLoadingStates((prev) => ({
         ...prev,
         addingCompetitor: { ...prev.addingCompetitor, [itemId]: false },
@@ -798,7 +843,7 @@ export function CompetitionDayDetailPage() {
           const result: Record<string, number> = {};
           for (const [k, v] of Object.entries(form.splitTimes)) {
             if (v && typeof v === "string" && v.trim()) {
-              const num = parseFloat(v);
+              const num = roundToTwoDecimals(parseFloat(v));
               if (!isNaN(num) && num > 0) {
                 result[k] = num;
               }
@@ -813,6 +858,9 @@ export function CompetitionDayDetailPage() {
     const item = competitionDay.queueItems.find((q) => q.id === itemId);
     const existing = item?.competitorTimes?.find((c) => c.teamName === form.teamName.trim());
 
+    // Calculate total time from time + penalty (penalties are ADDED to time)
+    const totalTime = time !== undefined ? roundToTwoDecimals(time + penalty) : undefined;
+    
     const newCompetitor: CompetitorTime = {
       id: existing?.id || `temp-${Date.now()}`,
       teamName: form.teamName.trim(),
@@ -879,12 +927,16 @@ export function CompetitionDayDetailPage() {
 
   const startEditingCompetitor = (competitor: CompetitorTime, itemId: string) => {
     setEditingCompetitorId(competitor.id);
+    // Calculate time from stored total time and penalty
+    const totalTime = competitor.totalTimeSeconds || 0;
+    const penalty = competitor.penaltySeconds || 0;
+    const time = roundToTwoDecimals(Math.max(0, totalTime - penalty));
     setCompetitorForms((prev) => ({
       ...prev,
       [itemId]: {
         teamName: competitor.teamName,
-        totalTime: competitor.totalTimeSeconds?.toString() || "",
-        penalty: competitor.penaltySeconds?.toString() || "0",
+        cleanTime: time > 0 ? time.toFixed(2) : "",
+        penalty: roundToTwoDecimals(penalty).toFixed(2),
         splitTimes: competitor.splitTimes
           ? Object.fromEntries(
               Object.entries(competitor.splitTimes).map(([k, v]) => [k, v.toString()])
@@ -912,11 +964,11 @@ export function CompetitionDayDetailPage() {
       updatingCompetitor: { ...prev.updatingCompetitor, [competitorId]: true },
     }));
 
-    const totalTime = form.totalTime.trim() ? parseFloat(form.totalTime) : null;
-    const penalty = form.penalty.trim() ? parseFloat(form.penalty) || 0 : null;
+    const time = form.cleanTime.trim() ? roundToTwoDecimals(parseFloat(form.cleanTime)) : null;
+    const penalty = form.penalty.trim() ? roundToTwoDecimals(parseFloat(form.penalty) || 0) : null;
 
-    if (totalTime !== null && (isNaN(totalTime) || totalTime <= 0)) {
-      toast.error("Total time must be a positive number");
+    if (time !== null && (isNaN(time) || time <= 0)) {
+      toast.error("Time must be a positive number");
       setLoadingStates((prev) => ({
         ...prev,
         updatingCompetitor: { ...prev.updatingCompetitor, [competitorId]: false },
@@ -929,7 +981,7 @@ export function CompetitionDayDetailPage() {
           const result: Record<string, number> = {};
           for (const [k, v] of Object.entries(form.splitTimes)) {
             if (v && typeof v === "string" && v.trim()) {
-              const num = parseFloat(v);
+              const num = roundToTwoDecimals(parseFloat(v));
               if (!isNaN(num) && num > 0) {
                 result[k] = num;
               }
@@ -939,6 +991,9 @@ export function CompetitionDayDetailPage() {
         })()
       : null;
 
+    // Calculate total time from time + penalty (penalties are ADDED to time)
+    const totalTime = time !== null && penalty !== null ? roundToTwoDecimals(time + penalty) : null;
+    
     // Optimistic update
     const previousState = competitionDay;
     const item = competitionDay.queueItems.find((q) => q.id === itemId);
@@ -1208,14 +1263,19 @@ export function CompetitionDayDetailPage() {
     );
 
     // Time distribution for completed runs (enhanced with best/average)
-    const timeDistribution = completedRuns.map((item) => ({
-      name: `${item.eventCode}${item.attemptNo > 1 ? ` (R${item.attemptNo})` : ""}`,
-      time: item.totalTimeSeconds!,
-      cleanTime: (item.totalTimeSeconds || 0) - (item.penaltySeconds || 0),
-      penalty: item.penaltySeconds || 0,
-      sequenceNo: item.sequenceNo,
-      eventCode: item.eventCode,
-    })).sort((a, b) => a.sequenceNo - b.sequenceNo);
+    const timeDistribution = completedRuns.map((item) => {
+      const totalTime = item.totalTimeSeconds || 0;
+      const penalty = item.penaltySeconds || 0;
+      const cleanTime = Math.max(0, totalTime - penalty); // Ensure clean time is never negative
+      return {
+        name: `${item.eventCode}${item.attemptNo > 1 ? ` (R${item.attemptNo})` : ""}`,
+        time: totalTime,
+        cleanTime,
+        penalty,
+        sequenceNo: item.sequenceNo,
+        eventCode: item.eventCode,
+      };
+    }).sort((a, b) => a.sequenceNo - b.sequenceNo);
 
     // Calculate best and average for reference
     const cleanTimes = timeDistribution.map((d) => d.cleanTime);
@@ -1226,13 +1286,17 @@ export function CompetitionDayDetailPage() {
 
     // Performance over time - shows if times degrade through the day (fatigue analysis)
     const performanceOverTime = completedRuns
-      .map((item) => ({
-        sequence: item.sequenceNo,
-        event: item.eventCode,
-        cleanTime: (item.totalTimeSeconds || 0) - (item.penaltySeconds || 0),
-        totalTime: item.totalTimeSeconds!,
-        penalty: item.penaltySeconds || 0,
-      }))
+      .map((item) => {
+        const totalTime = item.totalTimeSeconds || 0;
+        const penalty = item.penaltySeconds || 0;
+        return {
+          sequence: item.sequenceNo,
+          event: item.eventCode,
+          cleanTime: Math.max(0, totalTime - penalty), // Ensure clean time is never negative
+          totalTime,
+          penalty,
+        };
+      })
       .sort((a, b) => a.sequence - b.sequence);
 
     // Enhanced penalty analysis with percentages
@@ -1240,10 +1304,14 @@ export function CompetitionDayDetailPage() {
     const penaltyAnalysis = runsWithPenalties.map((item) => {
       const totalTime = item.totalTimeSeconds!;
       const penalty = item.penaltySeconds || 0;
+      // Cap penalty percentage at 100% to handle edge cases
+      const penaltyPercentage = totalTime > 0 
+        ? Math.min(100, Math.round((penalty / totalTime) * 100))
+        : 0;
       return {
         name: `${item.eventCode}${item.attemptNo > 1 ? ` (R${item.attemptNo})` : ""}`,
         penalty: penalty,
-        penaltyPercentage: totalTime > 0 ? Math.round((penalty / totalTime) * 100) : 0,
+        penaltyPercentage,
         totalTime: totalTime,
         eventCode: item.eventCode,
       };
@@ -1253,7 +1321,9 @@ export function CompetitionDayDetailPage() {
     const eventTypeGroups = new Map<string, number[]>();
     completedRuns.forEach((item) => {
       const eventType = item.eventCode.charAt(0); // A, F, or P
-      const cleanTime = (item.totalTimeSeconds || 0) - (item.penaltySeconds || 0);
+      const totalTime = item.totalTimeSeconds || 0;
+      const penalty = item.penaltySeconds || 0;
+      const cleanTime = Math.max(0, totalTime - penalty); // Ensure clean time is never negative
       if (!eventTypeGroups.has(eventType)) {
         eventTypeGroups.set(eventType, []);
       }
@@ -1286,12 +1356,14 @@ export function CompetitionDayDetailPage() {
       if (item.competitorTimes && item.competitorTimes.length > 1) {
         item.competitorTimes.forEach((competitor) => {
           if (competitor.ran && competitor.totalTimeSeconds) {
+            const totalTime = competitor.totalTimeSeconds;
+            const penalty = competitor.penaltySeconds || 0;
             teamComparisonData.push({
               event: `${item.eventCode}${item.attemptNo > 1 ? ` (R${item.attemptNo})` : ""}`,
               team: competitor.teamName,
-              cleanTime: (competitor.totalTimeSeconds || 0) - (competitor.penaltySeconds || 0),
-              totalTime: competitor.totalTimeSeconds,
-              penalty: competitor.penaltySeconds || 0,
+              cleanTime: Math.max(0, totalTime - penalty), // Ensure clean time is never negative
+              totalTime,
+              penalty,
             });
           }
         });
@@ -1336,28 +1408,35 @@ export function CompetitionDayDetailPage() {
     const estimatedCompletionTime = new Date(Date.now() + estimatedTimeRemaining * 1000);
     
     // Calculate confidence intervals (optimistic, realistic, pessimistic)
+    // Use sample standard deviation (n-1) for better estimates with small samples
     const times = completedRuns.map((item) => item.totalTimeSeconds || 0);
     const stdDev = times.length > 1
-      ? Math.sqrt(times.reduce((sum, t) => sum + Math.pow(t - avgTimePerRun, 2), 0) / times.length)
+      ? Math.sqrt(times.reduce((sum, t) => sum + Math.pow(t - avgTimePerRun, 2), 0) / (times.length - 1))
       : 0;
-    const optimisticTime = (avgTimePerRun - stdDev) * remainingRuns;
+    const optimisticTime = Math.max(0, (avgTimePerRun - stdDev) * remainingRuns); // Ensure non-negative
     const pessimisticTime = (avgTimePerRun + stdDev) * remainingRuns;
     
     // 2. Anomaly Detection
     const anomalies = completedRuns
       .map((item) => {
-        const cleanTime = (item.totalTimeSeconds || 0) - (item.penaltySeconds || 0);
+        const totalTime = item.totalTimeSeconds || 0;
+        const penalty = item.penaltySeconds || 0;
+        const cleanTime = Math.max(0, totalTime - penalty); // Ensure clean time is never negative
         if (times.length < 2) return null;
         const mean = avgTimePerRun;
-        const zScore = stdDev > 0 ? Math.abs((item.totalTimeSeconds! - mean) / stdDev) : 0;
+        // Use sample std dev for z-score calculation
+        const sampleStdDev = times.length > 1
+          ? Math.sqrt(times.reduce((sum, t) => sum + Math.pow(t - mean, 2), 0) / (times.length - 1))
+          : 0;
+        const zScore = sampleStdDev > 0 ? Math.abs((totalTime - mean) / sampleStdDev) : 0;
         return zScore > 2
           ? {
               event: `${item.eventCode}${item.attemptNo > 1 ? ` (R${item.attemptNo})` : ""}`,
               sequence: item.sequenceNo,
-              time: item.totalTimeSeconds!,
+              time: totalTime,
               cleanTime,
               zScore: zScore.toFixed(2),
-              type: item.totalTimeSeconds! > mean ? "slow" : "fast",
+              type: totalTime > mean ? "slow" : "fast",
             }
           : null;
       })
@@ -1374,12 +1453,19 @@ export function CompetitionDayDetailPage() {
     completedRuns.forEach((item) => {
       if (item.splitTimes && Object.keys(item.splitTimes).length > 0) {
         const total = item.totalTimeSeconds || 0;
+        // Use total time for percentage calculation
+        // Note: If split times sum > total, percentages will exceed 100%, indicating invalid data
+        const baseTotal = total || 1; // Avoid division by zero
         Object.entries(item.splitTimes).forEach(([phase, time]) => {
+          // Cap percentage at 100% to handle edge cases gracefully
+          const percentage = baseTotal > 0 
+            ? Math.min(100, Math.round((time / baseTotal) * 100))
+            : 0;
           splitTimeAnalysis.push({
             event: `${item.eventCode}${item.attemptNo > 1 ? ` (R${item.attemptNo})` : ""}`,
             phase,
             time,
-            percentage: total > 0 ? Math.round((time / total) * 100) : 0,
+            percentage,
           });
         });
       }
@@ -1412,7 +1498,9 @@ export function CompetitionDayDetailPage() {
       } as Record<string, { avg: number; best: number }>;
       
       const historical = mockHistorical[item.eventCode] || { avg: 0, best: 0 };
-      const cleanTime = (item.totalTimeSeconds || 0) - (item.penaltySeconds || 0);
+      const totalTime = item.totalTimeSeconds || 0;
+      const penalty = item.penaltySeconds || 0;
+      const cleanTime = Math.max(0, totalTime - penalty); // Ensure clean time is never negative
       
       return {
         event: `${item.eventCode}${item.attemptNo > 1 ? ` (R${item.attemptNo})` : ""}`,
@@ -1425,7 +1513,7 @@ export function CompetitionDayDetailPage() {
       };
     });
     
-    // 5. Pacing Analysis
+    // 5. Pacing Analysis (completion tracking)
     const pacingData = sortedQueue.map((item, index) => {
       const completedUpTo = sortedQueue.slice(0, index + 1).filter((i) => i.status === "RUN").length;
       const totalUpTo = index + 1;
@@ -1443,6 +1531,60 @@ export function CompetitionDayDetailPage() {
       };
     });
     
+    // 5b. Energy & Fatigue Pacing Analysis
+    const historicalDataForPacing: Record<string, {
+      avgTime?: number;
+      bestTime?: number;
+      avgPenalty?: number;
+    }> = {};
+    
+    // Build historical data from completed runs
+    completedRuns.forEach(run => {
+      if (!historicalDataForPacing[run.eventCode]) {
+        historicalDataForPacing[run.eventCode] = {};
+      }
+      const data = historicalDataForPacing[run.eventCode];
+      const times: number[] = [];
+      const penalties: number[] = [];
+      
+      completedRuns.filter(r => r.eventCode === run.eventCode).forEach(r => {
+        if (r.totalTimeSeconds) {
+          const penalty = r.penaltySeconds || 0;
+          const time = Math.max(0, r.totalTimeSeconds - penalty);
+          times.push(time);
+          penalties.push(penalty);
+        }
+      });
+      
+      if (times.length > 0) {
+        data.avgTime = times.reduce((sum, t) => sum + t, 0) / times.length;
+        data.bestTime = Math.min(...times);
+        data.avgPenalty = penalties.length > 0 ? penalties.reduce((sum, p) => sum + p, 0) / penalties.length : 0;
+      }
+    });
+    
+    // Add mock historical data for events without completed runs
+    const mockHistoricalData: Record<string, {
+      avgTime?: number;
+      bestTime?: number;
+      avgPenalty?: number;
+    }> = {
+      A1: { avgTime: 120, bestTime: 110, avgPenalty: 5 },
+      A3: { avgTime: 125, bestTime: 115, avgPenalty: 6 },
+      A5: { avgTime: 130, bestTime: 120, avgPenalty: 7 },
+      A7: { avgTime: 135, bestTime: 125, avgPenalty: 8 },
+      F9: { avgTime: 140, bestTime: 130, avgPenalty: 10 },
+      F11: { avgTime: 145, bestTime: 135, avgPenalty: 12 },
+      P13: { avgTime: 150, bestTime: 140, avgPenalty: 8 },
+      P15: { avgTime: 155, bestTime: 145, avgPenalty: 9 },
+      P17: { avgTime: 160, bestTime: 150, avgPenalty: 10 },
+    };
+    
+    // Merge actual data with mock data (actual takes precedence)
+    const pacingHistoricalData = { ...mockHistoricalData, ...historicalDataForPacing };
+    
+    const pacingAnalysis = analyzePacing(sortedQueue, pacingHistoricalData);
+    
     // 6. Strategic Insights Summary
     const insights = {
       totalRuns: sortedQueue.length,
@@ -1450,6 +1592,7 @@ export function CompetitionDayDetailPage() {
       remaining: remainingRuns,
       completionRate: sortedQueue.length > 0 ? (completedRuns.length / sortedQueue.length) * 100 : 0,
       avgTime: avgTimePerRun,
+      pacingAnalysis,
       totalPenalty: completedRuns.reduce((sum, item) => sum + (item.penaltySeconds || 0), 0),
       anomalies: anomalies.length,
       onTrack: estimatedTimeRemaining > 0 && estimatedTimeRemaining < 3600 * 4, // Less than 4 hours
@@ -1472,6 +1615,7 @@ export function CompetitionDayDetailPage() {
         remainingRuns,
         avgTimePerRun,
       },
+      pacingAnalysis,
       anomalies,
       splitTimeAnalysis,
       splitTimeSummary,
@@ -1867,8 +2011,51 @@ export function CompetitionDayDetailPage() {
                           </div>
                         )}
                         {insight.confidence && (
-                          <div className="mt-2 text-xs text-gray-500">
-                            Confidence: {Math.round(insight.confidence * 100)}%
+                          <div className="mt-2 flex items-center gap-4 text-xs text-gray-500">
+                            <span>Confidence: {Math.round(insight.confidence * 100)}%</span>
+                            {insight.impactScore && (
+                              <span className="font-semibold text-indigo-600">
+                                Impact Score: {insight.impactScore}/100
+                              </span>
+                            )}
+                            {insight.urgency && (
+                              <span className={`px-2 py-0.5 rounded ${
+                                insight.urgency === "immediate" ? "bg-red-100 text-red-700" :
+                                insight.urgency === "soon" ? "bg-orange-100 text-orange-700" :
+                                "bg-blue-100 text-blue-700"
+                              }`}>
+                                {insight.urgency === "immediate" ? "⚡ Immediate" :
+                                 insight.urgency === "soon" ? "⏰ Soon" : "📅 Planning"}
+                              </span>
+                            )}
+                            {insight.difficulty && (
+                              <span className={`px-2 py-0.5 rounded ${
+                                insight.difficulty === "easy" ? "bg-green-100 text-green-700" :
+                                insight.difficulty === "medium" ? "bg-yellow-100 text-yellow-700" :
+                                "bg-red-100 text-red-700"
+                              }`}>
+                                {insight.difficulty === "easy" ? "✓ Easy" :
+                                 insight.difficulty === "medium" ? "⚙ Medium" : "⚠ Hard"}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {insight.historicalContext && (
+                          <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
+                            <p className="text-xs font-semibold text-blue-700 mb-1">📊 Historical Context</p>
+                            <p className="text-xs text-blue-600">
+                              {insight.historicalContext.trend === "improving" ? "↑" :
+                               insight.historicalContext.trend === "declining" ? "↓" : "→"} 
+                              {" "}{insight.historicalContext.comparison}
+                              {insight.historicalContext.dataPoints > 0 && 
+                                ` (based on ${insight.historicalContext.dataPoints} historical data point${insight.historicalContext.dataPoints > 1 ? "s" : ""})`}
+                            </p>
+                          </div>
+                        )}
+                        {insight.expectedOutcome && (
+                          <div className="mt-2 p-2 bg-purple-50 rounded border border-purple-200">
+                            <p className="text-xs font-semibold text-purple-700 mb-1">🎯 Expected Outcome</p>
+                            <p className="text-xs text-purple-600">{insight.expectedOutcome}</p>
                           </div>
                         )}
                       </div>
@@ -2033,7 +2220,7 @@ export function CompetitionDayDetailPage() {
                       title="How to read this chart"
                       onClick={(e) => {
                         e.preventDefault();
-                        alert(`HOW TO READ:\n\n• X-axis: Sequence number (order of runs)\n• Y-axis: Clean time (time without penalties)\n• Green line: Your actual clean times\n• Blue dashed line: Average clean time (reference)\n• Upward trend = Possible fatigue (times getting slower)\n• Downward trend = Improving performance\n• Flat line = Consistent performance\n\nLook for patterns - if times increase significantly, consider taking a break.`);
+                        alert(`HOW TO READ:\n\n• X-axis: Sequence number (order of runs)\n• Y-axis: Time (without penalties)\n• Green line: Your actual times\n• Blue dashed line: Average time (reference)\n• Upward trend = Possible fatigue (times getting slower)\n• Downward trend = Improving performance\n• Flat line = Consistent performance\n\nLook for patterns - if times increase significantly, consider taking a break.`);
                       }}
                     >
                       ℹ️ How to Read
@@ -2048,7 +2235,7 @@ export function CompetitionDayDetailPage() {
                       />
                       <YAxis 
                         tickFormatter={(value) => formatTime(value)}
-                        label={{ value: "Clean Time (seconds)", angle: -90, position: "insideLeft" }}
+                        label={{ value: "Time (seconds)", angle: -90, position: "insideLeft" }}
                       />
                       <Tooltip
                         formatter={(value: number) => formatTime(value)}
@@ -2062,7 +2249,7 @@ export function CompetitionDayDetailPage() {
                         stroke="#10b981"
                         strokeWidth={2}
                         dot={{ fill: "#10b981", r: 4 }}
-                        name="Your Clean Time"
+                        name="Your Time"
                       />
                       {visualizationData.avgCleanTime && visualizationData.avgCleanTime > 0 && (
                         <ReferenceLine 
@@ -2097,14 +2284,14 @@ export function CompetitionDayDetailPage() {
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <h3 className="text-sm font-semibold text-gray-900">Time Distribution</h3>
-                      <p className="text-xs text-gray-500 mt-1">Total Time vs Clean Time by Run</p>
+                      <p className="text-xs text-gray-500 mt-1">Total Time vs Time by Run</p>
                     </div>
                     <button
                       className="text-xs text-blue-600 hover:text-blue-800"
                       title="How to read this chart"
                       onClick={(e) => {
                         e.preventDefault();
-                        alert(`HOW TO READ:\n\n• X-axis: Event codes (runs in sequence order)\n• Y-axis: Time in seconds\n• Blue bars: Total time (includes penalties)\n• Green bars: Clean time (time without penalties)\n• Orange dashed line: Your average clean time\n• Gap between blue and green = penalty time\n\nLarger gaps indicate more penalties. Compare your clean times to see which runs were fastest.`);
+                        alert(`HOW TO READ:\n\n• X-axis: Event codes (runs in sequence order)\n• Y-axis: Time in seconds\n• Blue bars: Total time (includes penalties)\n• Green bars: Time (without penalties)\n• Orange dashed line: Your average time\n• Gap between blue and green = penalty time\n\nLarger gaps indicate more penalties. Compare your times to see which runs were fastest.`);
                       }}
                     >
                       ℹ️ How to Read
@@ -2127,13 +2314,13 @@ export function CompetitionDayDetailPage() {
                       />
                       <Tooltip
                         formatter={(value: number, name: string) => {
-                          return [formatTime(value), name === "time" ? "Total Time (with penalties)" : "Clean Time (no penalties)"];
+                          return [formatTime(value), name === "time" ? "Total Time (with penalties)" : "Time (no penalties)"];
                         }}
                         contentStyle={{ backgroundColor: "#fff", border: "1px solid #e5e7eb" }}
                       />
                       <Legend />
                       <Bar dataKey="time" fill="#3b82f6" name="Total Time (with penalties)" />
-                      <Bar dataKey="cleanTime" fill="#10b981" name="Clean Time (no penalties)" />
+                      <Bar dataKey="cleanTime" fill="#10b981" name="Time (no penalties)" />
                       {visualizationData.avgCleanTime && visualizationData.avgCleanTime > 0 && (
                         <ReferenceLine 
                           y={visualizationData.avgCleanTime} 
@@ -2219,7 +2406,7 @@ export function CompetitionDayDetailPage() {
                       title="How to read this chart"
                       onClick={(e) => {
                         e.preventDefault();
-                        alert(`HOW TO READ:\n\n• X-axis: Event type (A=Agility, F=Freestyle, P=Precision)\n• Y-axis: Clean time in seconds\n• Green bars: Your best time for this event type\n• Blue bars: Your average time\n• Red bars: Your worst time\n• Gap between bars = consistency (smaller gap = more consistent)\n\nUse this to identify:\n- Which event types you're strongest at (lowest times)\n- Which need improvement (highest times)\n- Your consistency (gap between best/worst)`);
+                        alert(`HOW TO READ:\n\n• X-axis: Event type (A=Agility, F=Freestyle, P=Precision)\n• Y-axis: Time in seconds\n• Green bars: Your best time for this event type\n• Blue bars: Your average time\n• Red bars: Your worst time\n• Gap between bars = consistency (smaller gap = more consistent)\n\nUse this to identify:\n- Which event types you're strongest at (lowest times)\n- Which need improvement (highest times)\n- Your consistency (gap between best/worst)`);
                       }}
                     >
                       ℹ️ How to Read
@@ -2234,7 +2421,7 @@ export function CompetitionDayDetailPage() {
                       />
                       <YAxis 
                         tickFormatter={(value) => formatTime(value)}
-                        label={{ value: "Clean Time (seconds)", angle: -90, position: "insideLeft" }}
+                        label={{ value: "Time (seconds)", angle: -90, position: "insideLeft" }}
                       />
                       <Tooltip
                         formatter={(value: number, name: string) => {
@@ -2272,7 +2459,7 @@ export function CompetitionDayDetailPage() {
                       title="How to read this chart"
                       onClick={(e) => {
                         e.preventDefault();
-                        alert(`HOW TO READ:\n\n• Each chart shows one event\n• Y-axis: Team names\n• X-axis: Clean time (shorter = faster)\n• Green bars: Best performing team (fastest time)\n• Blue bars: Other teams\n• Shorter bars = faster times = better performance\n\nUse this to:\n- See which team performed best on each event\n- Identify your team's strengths and weaknesses\n- Compare your team against competitors`);
+                        alert(`HOW TO READ:\n\n• Each chart shows one event\n• Y-axis: Team names\n• X-axis: Time (shorter = faster)\n• Green bars: Best performing team (fastest time)\n• Blue bars: Other teams\n• Shorter bars = faster times = better performance\n\nUse this to:\n- See which team performed best on each event\n- Identify your team's strengths and weaknesses\n- Compare your team against competitors`);
                       }}
                     >
                       ℹ️ How to Read
@@ -2288,7 +2475,7 @@ export function CompetitionDayDetailPage() {
                             <XAxis 
                               type="number" 
                               tickFormatter={(value) => formatTime(value)}
-                              label={{ value: "Clean Time (seconds)", position: "insideBottom", offset: -5 }}
+                              label={{ value: "Time (seconds)", position: "insideBottom", offset: -5 }}
                             />
                             <YAxis 
                               dataKey="team" 
@@ -2303,7 +2490,7 @@ export function CompetitionDayDetailPage() {
                             <Legend />
                             <Bar 
                               dataKey="cleanTime" 
-                              name="Clean Time"
+                              name="Time"
                               fill="#3b82f6"
                             >
                               {eventData.teams.map((entry: any, index: number) => (
@@ -2483,6 +2670,172 @@ export function CompetitionDayDetailPage() {
                   </div>
                 )}
 
+                {/* Pacing Strategy Analyzer */}
+                {visualizationData.pacingAnalysis && visualizationData.pacingAnalysis.energyCurve.length > 0 && (
+                  <div className="lg:col-span-2">
+                    <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg p-6 border-2 border-emerald-300 shadow-sm">
+                      <div className="flex items-start justify-between mb-4">
+                        <div>
+                          <h4 className="text-base font-semibold text-gray-900 flex items-center gap-2 mb-1">
+                            ⚡ Pacing Strategy Analyzer
+                          </h4>
+                          <p className="text-xs text-gray-600">Energy management and fatigue risk analysis</p>
+                        </div>
+                        <button
+                          className="text-xs text-emerald-600 hover:text-emerald-800 font-medium"
+                          title="How to read this"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            alert(`HOW TO READ:\n\n• Energy Level: Your remaining energy (100% = fresh, 0% = exhausted)\n• Fatigue Risk: Low/Medium/High/Critical - indicates performance degradation risk\n• Break Recommendations: Optimal times to rest\n• Energy Curve: Shows how energy depletes through the day\n\n• Green zone (70-100%): Optimal performance\n• Yellow zone (40-70%): Performance may degrade\n• Red zone (0-40%): High fatigue risk\n\nUse this to:\n- Plan breaks strategically\n- Prevent fatigue-related performance drops\n- Maintain consistent performance throughout the day`);
+                          }}
+                        >
+                          ℹ️ How to Read
+                        </button>
+                      </div>
+
+                      {/* Energy Curve Chart */}
+                      <div className="mb-6">
+                        <h5 className="text-sm font-semibold text-gray-900 mb-3">Energy Level Over Time</h5>
+                        <ResponsiveContainer width="100%" height={200}>
+                          <LineChart data={visualizationData.pacingAnalysis.energyCurve.map(point => ({
+                            sequence: point.sequenceNo,
+                            event: point.eventCode,
+                            energyLevel: point.energyLevel,
+                            cumulativeEnergy: point.cumulativeEnergy,
+                            fatigueRisk: point.fatigueRisk,
+                          }))}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                            <XAxis 
+                              dataKey="sequence" 
+                              label={{ value: "Run Sequence", position: "insideBottom", offset: -5 }}
+                            />
+                            <YAxis 
+                              label={{ value: "Energy Level (%)", angle: -90, position: "insideLeft" }}
+                              domain={[0, 100]}
+                            />
+                            <Tooltip
+                              formatter={(value: number, name: string) => {
+                                if (name === "energyLevel") {
+                                  return [`${value.toFixed(1)}%`, "Energy Level"];
+                                }
+                                return [value.toFixed(1), name];
+                              }}
+                              labelFormatter={(label) => `Run #${label}`}
+                              contentStyle={{ backgroundColor: "#fff", border: "1px solid #e5e7eb" }}
+                            />
+                            <Legend />
+                            <Line
+                              type="monotone"
+                              dataKey="energyLevel"
+                              stroke="#10b981"
+                              strokeWidth={2}
+                              dot={{ fill: "#10b981", r: 4 }}
+                              name="Energy Level (%)"
+                            />
+                            <ReferenceLine y={70} stroke="#fbbf24" strokeDasharray="5 5" label="Optimal Zone" />
+                            <ReferenceLine y={40} stroke="#ef4444" strokeDasharray="5 5" label="Fatigue Risk" />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* Break Recommendations */}
+                      {visualizationData.pacingAnalysis.breakRecommendations.length > 0 && (
+                        <div className="mb-6">
+                          <h5 className="text-sm font-semibold text-gray-900 mb-3">Break Recommendations</h5>
+                          <div className="space-y-2">
+                            {visualizationData.pacingAnalysis.breakRecommendations.map((rec, idx) => (
+                              <div
+                                key={idx}
+                                className={`p-3 rounded-lg border ${
+                                  rec.priority === "high"
+                                    ? "bg-red-50 border-red-200"
+                                    : rec.priority === "medium"
+                                    ? "bg-yellow-50 border-yellow-200"
+                                    : "bg-blue-50 border-blue-200"
+                                }`}
+                              >
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <p className="text-sm font-semibold text-gray-900">
+                                      After {rec.afterEvent} (Run #{rec.afterSequence})
+                                    </p>
+                                    <p className="text-xs text-gray-600 mt-1">{rec.reason}</p>
+                                  </div>
+                                  <div className="text-right ml-4">
+                                    <p className={`text-lg font-bold ${
+                                      rec.priority === "high" ? "text-red-700" :
+                                      rec.priority === "medium" ? "text-yellow-700" :
+                                      "text-blue-700"
+                                    }`}>
+                                      {rec.duration} min
+                                    </p>
+                                    <p className="text-xs text-gray-500">break</p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Fatigue Warnings */}
+                      {visualizationData.pacingAnalysis.fatigueWarnings.length > 0 && (
+                        <div className="mb-6">
+                          <h5 className="text-sm font-semibold text-red-900 mb-3">⚠️ Fatigue Warnings</h5>
+                          <div className="space-y-2">
+                            {visualizationData.pacingAnalysis.fatigueWarnings.map((warning, idx) => (
+                              <div
+                                key={idx}
+                                className={`p-3 rounded-lg border ${
+                                  warning.severity === "critical"
+                                    ? "bg-red-100 border-red-300"
+                                    : "bg-orange-100 border-orange-300"
+                                }`}
+                              >
+                                <p className="text-sm font-semibold text-gray-900">
+                                  {warning.eventCode} (Run #{warning.sequenceNo})
+                                </p>
+                                <p className="text-xs text-gray-700 mt-1">{warning.message}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+
+                      {/* Summary Stats */}
+                      <div className="mt-6 pt-4 border-t border-emerald-200 grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="text-center">
+                          <p className="text-xs text-gray-600">Peak Fatigue</p>
+                          <p className="text-lg font-bold text-gray-900">
+                            Run #{visualizationData.pacingAnalysis.peakFatiguePoint}
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-xs text-gray-600">Total Energy</p>
+                          <p className="text-lg font-bold text-gray-900">
+                            {visualizationData.pacingAnalysis.totalEstimatedEnergy.toFixed(1)}
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-xs text-gray-600">Break Opportunities</p>
+                          <p className="text-lg font-bold text-emerald-700">
+                            {visualizationData.pacingAnalysis.recoveryOpportunities}
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-xs text-gray-600">Fatigue Warnings</p>
+                          <p className={`text-lg font-bold ${
+                            visualizationData.pacingAnalysis.fatigueWarnings.length > 0 ? "text-red-600" : "text-green-600"
+                          }`}>
+                            {visualizationData.pacingAnalysis.fatigueWarnings.length}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Anomaly Detection */}
                 {visualizationData.anomalies && visualizationData.anomalies.length > 0 && (
                   <div className="lg:col-span-2">
@@ -2517,8 +2870,8 @@ export function CompetitionDayDetailPage() {
                                 <span className="text-xs text-gray-500">(Run #{anomaly.sequence})</span>
                               </div>
                               <div className="mt-1 text-xs text-gray-600">
-                                Time: <strong>{formatTime(anomaly.time)}</strong> | 
-                                Clean: <strong>{formatTime(anomaly.cleanTime)}</strong>
+                                Total: <strong>{formatTime(anomaly.time)}</strong> | 
+                                Time: <strong>{formatTime(anomaly.cleanTime)}</strong>
                               </div>
                             </div>
                             <div className="flex items-center gap-3">
@@ -2562,7 +2915,7 @@ export function CompetitionDayDetailPage() {
                         title="How to read this chart"
                         onClick={(e) => {
                           e.preventDefault();
-                          alert(`HOW TO READ:\n\n• X-axis: Event codes\n• Y-axis: Clean time in seconds\n• Blue bars: Your current performance\n• Gray bars: Historical average (your typical performance)\n• Green bars: Historical best (your best ever)\n\nInterpretation:\n• If blue < green = You're performing better than your best!\n• If blue < gray = You're performing better than average\n• If blue > gray = Below average (room for improvement)\n• If blue > green = Significantly below best (investigate why)\n\nUse this to:\n- See if you're improving over time\n- Identify events where you're underperforming\n- Set goals based on historical bests\n- Track progress toward personal records`);
+                          alert(`HOW TO READ:\n\n• X-axis: Event codes\n• Y-axis: Time in seconds\n• Blue bars: Your current performance\n• Gray bars: Historical average (your typical performance)\n• Green bars: Historical best (your best ever)\n\nInterpretation:\n• If blue < green = You're performing better than your best!\n• If blue < gray = You're performing better than average\n• If blue > gray = Below average (room for improvement)\n• If blue > green = Significantly below best (investigate why)\n\nUse this to:\n- See if you're improving over time\n- Identify events where you're underperforming\n- Set goals based on historical bests\n- Track progress toward personal records`);
                         }}
                       >
                         ℹ️ How to Read
@@ -2582,7 +2935,7 @@ export function CompetitionDayDetailPage() {
                           />
                           <YAxis 
                             tickFormatter={(value) => formatTime(value)}
-                            label={{ value: "Clean Time (seconds)", angle: -90, position: "insideLeft" }}
+                            label={{ value: "Time (seconds)", angle: -90, position: "insideLeft" }}
                           />
                           <Tooltip
                             formatter={(value: number, name: string) => {
@@ -2893,31 +3246,37 @@ export function CompetitionDayDetailPage() {
                       )}
                       {/* Time Entry */}
                       <div className="mt-3 space-y-3">
-                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
                           <div>
-                            <label className="block text-xs text-gray-600 mb-1">Total Time (s)</label>
+                            <label className="block text-xs text-gray-600 mb-1">Time (s) ⏱️</label>
                             <input
                               type="number"
-                              step="0.1"
+                              step="0.01"
                               min="0"
-                              value={timeEntries[item.id]?.totalTime ?? (item.totalTimeSeconds?.toString() || "")}
-                              onChange={(e) => handleTimeChange(item.id, "totalTime", e.target.value)}
-                              placeholder="125.5"
+                              value={timeEntries[item.id]?.cleanTime ?? (() => {
+                                // Calculate time from stored total time and penalty
+                                const total = item.totalTimeSeconds || 0;
+                                const penalty = item.penaltySeconds || 0;
+                                const time = roundToTwoDecimals(Math.max(0, total - penalty));
+                                return time > 0 ? time.toFixed(2) : "";
+                              })()}
+                              onChange={(e) => handleTimeChange(item.id, "cleanTime", e.target.value)}
+                              placeholder="100.0"
                               className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                                validationErrors[item.id]?.totalTime ? "border-red-500" : "border-gray-300"
+                                validationErrors[item.id]?.cleanTime ? "border-red-500" : "border-gray-300"
                               }`}
                             />
-                            {validationErrors[item.id]?.totalTime && (
-                              <p className="text-xs text-red-600 mt-0.5">{validationErrors[item.id].totalTime}</p>
+                            {validationErrors[item.id]?.cleanTime && (
+                              <p className="text-xs text-red-600 mt-0.5">{validationErrors[item.id].cleanTime}</p>
                             )}
                           </div>
                           <div>
-                            <label className="block text-xs text-gray-600 mb-1">Penalty (s)</label>
+                            <label className="block text-xs text-gray-600 mb-1">Penalty (s) ⚠️</label>
                             <input
                               type="number"
-                              step="0.1"
+                              step="0.01"
                               min="0"
-                              value={timeEntries[item.id]?.penalty ?? (item.penaltySeconds?.toString() || "0")}
+                              value={timeEntries[item.id]?.penalty ?? (item.penaltySeconds ? roundToTwoDecimals(item.penaltySeconds).toFixed(2) : "0.00")}
                               onChange={(e) => handleTimeChange(item.id, "penalty", e.target.value)}
                               placeholder="0"
                               className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -2929,15 +3288,32 @@ export function CompetitionDayDetailPage() {
                             )}
                           </div>
                           <div>
-                            <label className="block text-xs text-gray-600 mb-1">Clean Time</label>
+                            <label className="block text-xs text-gray-600 mb-1">Total</label>
                             <div className="px-2 py-1.5 text-sm font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded">
                               {(() => {
-                                const total = parseFloat(timeEntries[item.id]?.totalTime || item.totalTimeSeconds?.toString() || "0") || 0;
-                                const penalty = parseFloat(timeEntries[item.id]?.penalty || item.penaltySeconds?.toString() || "0") || 0;
-                                const clean = Math.max(0, total - penalty);
-                                return clean > 0 ? formatTime(clean) : "-";
+                                // Get time from form input or calculate from saved data
+                                const timeInput = timeEntries[item.id]?.cleanTime;
+                                const time = timeInput && timeInput.trim() 
+                                  ? roundToTwoDecimals(parseFloat(timeInput))
+                                  : (() => {
+                                      // Fallback: calculate from saved totalTime and penalty
+                                      const total = item.totalTimeSeconds || 0;
+                                      const penalty = item.penaltySeconds || 0;
+                                      return roundToTwoDecimals(Math.max(0, total - penalty));
+                                    })();
+                                
+                                // Get penalty from form input or saved data
+                                const penaltyInput = timeEntries[item.id]?.penalty;
+                                const penalty = penaltyInput && penaltyInput.trim()
+                                  ? roundToTwoDecimals(parseFloat(penaltyInput) || 0)
+                                  : roundToTwoDecimals(item.penaltySeconds || 0);
+                                
+                                // Total = time + penalty
+                                const total = roundToTwoDecimals((time || 0) + penalty);
+                                return total > 0 ? formatTime(total) : "-";
                               })()}
                             </div>
+                            <p className="text-xs text-gray-500 mt-0.5">Time + Penalty</p>
                           </div>
                           <div className="flex gap-2">
                             <button
@@ -2985,9 +3361,9 @@ export function CompetitionDayDetailPage() {
                                         </label>
                                         <input
                                           type="number"
-                                          step="0.1"
+                                          step="0.01"
                                           min="0"
-                                          value={timeEntries[item.id]?.splitTimes?.[phaseId] || item.splitTimes?.[phaseId]?.toString() || ""}
+                                          value={timeEntries[item.id]?.splitTimes?.[phaseId] || (item.splitTimes?.[phaseId] ? roundToTwoDecimals(item.splitTimes[phaseId]).toFixed(2) : "")}
                                           onChange={(e) => handleSplitTimeChange(item.id, phaseId, e.target.value)}
                                           placeholder="Optional"
                                           className={`w-full px-2 py-1.5 text-xs border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -3033,7 +3409,7 @@ export function CompetitionDayDetailPage() {
                                       ...prev,
                                       [item.id]: {
                                         teamName: "",
-                                        totalTime: "",
+                                        cleanTime: "",
                                         penalty: "0",
                                         splitTimes: {},
                                         notes: "",
@@ -3115,7 +3491,10 @@ export function CompetitionDayDetailPage() {
                                       onChange={(e) =>
                                         setCompetitorForms((prev) => ({
                                           ...prev,
-                                          [item.id]: { ...prev[item.id], teamName: e.target.value },
+                                          [item.id]: { 
+                                            ...(prev[item.id] || { teamName: "", cleanTime: "", penalty: "0", splitTimes: {}, notes: "" }),
+                                            teamName: e.target.value 
+                                          },
                                         }))
                                       }
                                       placeholder="Team name"
@@ -3124,38 +3503,56 @@ export function CompetitionDayDetailPage() {
                                     />
                                   </div>
                                   <div>
-                                    <label className="block text-xs text-gray-600 mb-1">Total Time (s)</label>
+                                    <label className="block text-xs text-gray-600 mb-1">Time (s) ⏱️</label>
                                     <input
                                       type="number"
-                                      step="0.1"
+                                      step="0.01"
                                       min="0"
-                                      value={competitorForms[item.id]?.totalTime || ""}
+                                      value={competitorForms[item.id]?.cleanTime || ""}
                                       onChange={(e) =>
                                         setCompetitorForms((prev) => ({
                                           ...prev,
-                                          [item.id]: { ...prev[item.id], totalTime: e.target.value },
+                                          [item.id]: { 
+                                            ...(prev[item.id] || { teamName: "", cleanTime: "", penalty: "0", splitTimes: {}, notes: "" }),
+                                            cleanTime: e.target.value 
+                                          },
                                         }))
                                       }
-                                      placeholder="125.5"
+                                      placeholder="100.0"
                                       className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
                                     />
                                   </div>
                                   <div>
-                                    <label className="block text-xs text-gray-600 mb-1">Penalty (s)</label>
+                                    <label className="block text-xs text-gray-600 mb-1">Penalty (s) ⚠️</label>
                                     <input
                                       type="number"
-                                      step="0.1"
+                                      step="0.01"
                                       min="0"
-                                      value={competitorForms[item.id]?.penalty || "0"}
+                                      value={competitorForms[item.id]?.penalty || "0.00"}
                                       onChange={(e) =>
                                         setCompetitorForms((prev) => ({
                                           ...prev,
-                                          [item.id]: { ...prev[item.id], penalty: e.target.value },
+                                          [item.id]: { 
+                                            ...(prev[item.id] || { teamName: "", cleanTime: "", penalty: "0", splitTimes: {}, notes: "" }),
+                                            penalty: e.target.value 
+                                          },
                                         }))
                                       }
                                       placeholder="0"
                                       className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
                                     />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-gray-600 mb-1">Total</label>
+                                    <div className="px-2 py-1.5 text-sm font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded">
+                                      {(() => {
+                                        const time = roundToTwoDecimals(parseFloat(competitorForms[item.id]?.cleanTime || "0") || 0);
+                                        const penalty = roundToTwoDecimals(parseFloat(competitorForms[item.id]?.penalty || "0") || 0);
+                                        const total = roundToTwoDecimals(time + penalty);
+                                        return total > 0 ? formatTime(total) : "-";
+                                      })()}
+                                    </div>
+                                    <p className="text-xs text-gray-500 mt-0.5">Time + Penalty</p>
                                   </div>
                                 </div>
                                 {runSpecs[item.eventCode]?.phases && runSpecs[item.eventCode].phases.length > 0 && (
@@ -3172,9 +3569,13 @@ export function CompetitionDayDetailPage() {
                                             <label className="block text-xs text-gray-600 mb-1">{phase.name || `Phase ${idx + 1}`}</label>
                                             <input
                                               type="number"
-                                              step="0.1"
+                                              step="0.01"
                                               min="0"
-                                              value={competitorForms[item.id]?.splitTimes?.[phaseId] || ""}
+                                              value={competitorForms[item.id]?.splitTimes?.[phaseId] || (() => {
+                                                // Format existing split time if available
+                                                const splitTime = item.competitorTimes?.find(c => c.splitTimes?.[phaseId])?.splitTimes?.[phaseId];
+                                                return splitTime ? roundToTwoDecimals(splitTime).toFixed(2) : "";
+                                              })()}
                                               onChange={(e) =>
                                                 setCompetitorForms((prev) => ({
                                                   ...prev,
@@ -3250,7 +3651,6 @@ export function CompetitionDayDetailPage() {
                                         <th className="px-3 py-2 text-center font-semibold">Status</th>
                                         <th className="px-3 py-2 text-right font-semibold">Total</th>
                                         <th className="px-3 py-2 text-right font-semibold">Penalty</th>
-                                        <th className="px-3 py-2 text-right font-semibold">Clean</th>
                                         {item.totalTimeSeconds && (
                                           <th className="px-3 py-2 text-right font-semibold">vs Us</th>
                                         )}
@@ -3263,9 +3663,7 @@ export function CompetitionDayDetailPage() {
                                     <tbody className="divide-y divide-gray-200">
                                       {/* All teams (Us + Competitors) sorted by fastest total time (includes penalties) */}
                                       {(() => {
-                                        const ourClean = item.totalTimeSeconds
-                                          ? Math.max(0, item.totalTimeSeconds - (item.penaltySeconds || 0))
-                                          : null;
+                                        const ourTotal = item.totalTimeSeconds || null;
                                         
                                         // Create combined array with "Us" and competitors
                                         const allTeams: Array<{
@@ -3275,7 +3673,6 @@ export function CompetitionDayDetailPage() {
                                           ran: boolean;
                                           totalTimeSeconds: number | null;
                                           penaltySeconds: number | null;
-                                          cleanTime: number | null;
                                           splitTimes?: Record<string, number> | null;
                                           notes?: string;
                                         }> = [];
@@ -3289,16 +3686,12 @@ export function CompetitionDayDetailPage() {
                                             ran: true,
                                             totalTimeSeconds: item.totalTimeSeconds,
                                             penaltySeconds: item.penaltySeconds || 0,
-                                            cleanTime: ourClean,
                                             splitTimes: item.splitTimes,
                                           });
                                         }
                                         
                                         // Add competitors
                                         (item.competitorTimes || []).forEach((competitor) => {
-                                          const competitorClean = competitor.totalTimeSeconds
-                                            ? Math.max(0, competitor.totalTimeSeconds - (competitor.penaltySeconds || 0))
-                                            : null;
                                           allTeams.push({
                                             id: competitor.id,
                                             teamName: competitor.teamName,
@@ -3306,7 +3699,6 @@ export function CompetitionDayDetailPage() {
                                             ran: competitor.ran,
                                             totalTimeSeconds: competitor.totalTimeSeconds || null,
                                             penaltySeconds: competitor.penaltySeconds || null,
-                                            cleanTime: competitorClean,
                                             splitTimes: competitor.splitTimes,
                                             notes: competitor.notes,
                                           });
@@ -3329,8 +3721,9 @@ export function CompetitionDayDetailPage() {
                                         });
                                         
                                         return allTeams.map((team) => {
-                                          const diff = ourClean !== null && team.cleanTime !== null && !team.isUs
-                                            ? team.cleanTime - ourClean
+                                          // Compare total times (includes penalties) for "vs Us" column
+                                          const diff = ourTotal !== null && team.totalTimeSeconds !== null && !team.isUs
+                                            ? team.totalTimeSeconds - ourTotal
                                             : null;
                                           const hasSplitTimes = item.splitTimes || team.splitTimes;
                                           const isFaster = diff !== null && diff < 0;
@@ -3366,9 +3759,6 @@ export function CompetitionDayDetailPage() {
                                               </td>
                                               <td className="px-3 py-2 text-right text-red-600">
                                                 {team.penaltySeconds && team.penaltySeconds > 0 ? `+${formatTime(team.penaltySeconds)}` : "-"}
-                                              </td>
-                                              <td className="px-3 py-2 text-right font-semibold">
-                                                {team.cleanTime !== null ? formatTime(team.cleanTime) : "—"}
                                               </td>
                                               {item.totalTimeSeconds && !team.isUs && (
                                                 <td className={`px-3 py-2 text-right font-semibold ${isFaster ? "text-green-700" : isSlower ? "text-red-700" : "text-gray-700"}`}>
@@ -3446,10 +3836,8 @@ export function CompetitionDayDetailPage() {
                         <div className="mt-2 text-xs text-gray-500">
                           Saved: {formatTime(item.totalTimeSeconds)} total
                           {item.penaltySeconds && item.penaltySeconds > 0 && (
-                            <> • +{formatTime(item.penaltySeconds)} penalty</>
+                            <> (+{formatTime(item.penaltySeconds)} penalty)</>
                           )}
-                          {" • "}
-                          {formatTime(Math.max(0, item.totalTimeSeconds - (item.penaltySeconds || 0)))} clean
                           {item.splitTimes && Object.keys(item.splitTimes).length > 0 && (
                             <> • Split times recorded</>
                           )}

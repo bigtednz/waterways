@@ -7,8 +7,8 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
-  const secs = (seconds % 60).toFixed(1);
-  return `${mins}:${secs.padStart(4, "0")}`;
+  const secs = (seconds % 60).toFixed(2);
+  return `${mins}:${secs.padStart(5, "0")}`;
 }
 
 export function formatDate(date: string | Date): string {

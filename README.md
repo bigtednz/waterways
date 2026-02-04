@@ -9,6 +9,9 @@ A performance-diagnostics system that quantifies not just how fast a team runs, 
 - **Run-Level Analytics**: Like-for-like diagnostics across run types (A1, A3, A5, etc.)
 - **Competition Trends**: Overall performance tracking with median clean times and penalty analysis
 - **Goals & Tracking**: Set and track performance goals with auto-update from competition data, database persistence, and multi-device sync
+- **Pacing Strategy Analyzer**: Energy management and fatigue risk analysis with break recommendations
+- **Performance Forecasting**: Advanced forecasting with confidence intervals and trend analysis
+- **AI Insights**: Actionable insights with anomaly detection and coaching recommendations
 - **Coaching Insights**: Automated coaching summaries with drill recommendations
 - **Penalty Registry**: Verbatim rulebook references with taxonomy classification
 - **Run Library**: Data-driven run specifications stored as JSON

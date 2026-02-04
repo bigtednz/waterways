@@ -18,6 +18,7 @@ import { formatDate, formatTime } from "../lib/utils";
 import type { CompetitionTrend, DriverAnalysis } from "@waterways/shared";
 import { GoalsManager } from "../components/GoalsManager";
 import { Goal, calculateProgress, calculateStatus } from "../lib/goals";
+import { generatePerformanceForecast, formatForecast } from "../lib/performanceForecasting";
 
 interface Season {
   id: string;
@@ -235,14 +236,8 @@ export function DashboardPage() {
     ? 100  // All performances are the same, so perfect score
     : 50;  // Default when no data
 
-  // Simple trend-based prediction (linear extrapolation)
-  const predictNextCompetition = (): number | null => {
-    if (recentTrends.length < 3) return null;
-    const last3 = recentTrends.slice(-3);
-    const trend = (last3[2].medianCleanTime - last3[0].medianCleanTime) / 2;
-    return Math.max(0, last3[2].medianCleanTime + trend);
-  };
-  const predictedNext = predictNextCompetition();
+  // Enhanced performance forecasting
+  const performanceForecast = generatePerformanceForecast(competitionTrends);
 
   // Calculate scenario impact if scenario is selected
   const scenarioImpact = selectedScenarioId && scenarioTrends.length > 0 && competitionTrends.length > 0
@@ -491,19 +486,130 @@ export function DashboardPage() {
           )}
         </div>
 
-        {predictedNext !== null && (
+        {performanceForecast && (
           <div className="bg-gradient-to-br from-violet-50 to-violet-100 p-6 rounded-lg shadow-lg border border-violet-200">
-            <h3 className="text-sm font-medium text-violet-700">Next Competition Forecast</h3>
-            <p className="text-3xl font-bold text-violet-900 mt-2">
-              {formatTime(predictedNext)}
-            </p>
-            <p className="text-xs text-violet-600 mt-1">
-              Predicted median clean time
-            </p>
-            {currentCleanTime > 0 && (
-              <p className="text-xs text-violet-700 mt-2">
-                {predictedNext < currentCleanTime ? "↓ Improving" : "↑ Declining"}
-              </p>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-violet-900">📊 Performance Forecast</h3>
+              <span className={`text-xs px-2 py-1 rounded ${
+                performanceForecast.nextCompetitionPrediction.confidence === "high" ? "bg-green-200 text-green-800" :
+                performanceForecast.nextCompetitionPrediction.confidence === "medium" ? "bg-yellow-200 text-yellow-800" :
+                "bg-gray-200 text-gray-800"
+              }`}>
+                {performanceForecast.nextCompetitionPrediction.confidence.toUpperCase()} Confidence
+              </span>
+            </div>
+            
+            {/* Next Competition Prediction */}
+            <div className="mb-4">
+              <p className="text-xs text-violet-600 mb-2">Next Competition Prediction</p>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-white p-3 rounded">
+                  <p className="text-xs text-gray-500">Optimistic</p>
+                  <p className="text-lg font-bold text-green-600">
+                    {formatTime(performanceForecast.nextCompetitionPrediction.timeRange.optimistic)}
+                  </p>
+                </div>
+                <div className="bg-white p-3 rounded border-2 border-violet-300">
+                  <p className="text-xs text-gray-500">Realistic</p>
+                  <p className="text-lg font-bold text-violet-900">
+                    {formatTime(performanceForecast.nextCompetitionPrediction.timeRange.realistic)}
+                  </p>
+                </div>
+                <div className="bg-white p-3 rounded">
+                  <p className="text-xs text-gray-500">Pessimistic</p>
+                  <p className="text-lg font-bold text-red-600">
+                    {formatTime(performanceForecast.nextCompetitionPrediction.timeRange.pessimistic)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Metric Forecasts */}
+            <div className="space-y-2 mb-4">
+              <div className="bg-white p-3 rounded">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">Time Performance</span>
+                  <span className={`text-xs px-2 py-1 rounded ${
+                    performanceForecast.timeForecast.trend === "improving" ? "bg-green-100 text-green-700" :
+                    performanceForecast.timeForecast.trend === "declining" ? "bg-red-100 text-red-700" :
+                    "bg-gray-100 text-gray-700"
+                  }`}>
+                    {performanceForecast.timeForecast.trend === "improving" ? "↓ Improving" :
+                     performanceForecast.timeForecast.trend === "declining" ? "↑ Declining" : "→ Stable"}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {formatForecast(performanceForecast.timeForecast)}
+                </p>
+              </div>
+              
+              <div className="bg-white p-3 rounded">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">Penalty Load</span>
+                  <span className={`text-xs px-2 py-1 rounded ${
+                    performanceForecast.penaltyForecast.trend === "improving" ? "bg-green-100 text-green-700" :
+                    performanceForecast.penaltyForecast.trend === "declining" ? "bg-red-100 text-red-700" :
+                    "bg-gray-100 text-gray-700"
+                  }`}>
+                    {performanceForecast.penaltyForecast.trend === "improving" ? "↓ Improving" :
+                     performanceForecast.penaltyForecast.trend === "declining" ? "↑ Declining" : "→ Stable"}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {formatForecast(performanceForecast.penaltyForecast)}
+                </p>
+              </div>
+              
+              <div className="bg-white p-3 rounded">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">Consistency</span>
+                  <span className={`text-xs px-2 py-1 rounded ${
+                    performanceForecast.consistencyForecast.trend === "improving" ? "bg-green-100 text-green-700" :
+                    performanceForecast.consistencyForecast.trend === "declining" ? "bg-red-100 text-red-700" :
+                    "bg-gray-100 text-gray-700"
+                  }`}>
+                    {performanceForecast.consistencyForecast.trend === "improving" ? "↓ Improving" :
+                     performanceForecast.consistencyForecast.trend === "declining" ? "↑ Declining" : "→ Stable"}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {formatForecast(performanceForecast.consistencyForecast)}
+                </p>
+              </div>
+            </div>
+
+            {/* Improvement Opportunities */}
+            {performanceForecast.improvementOpportunities.length > 0 && (
+              <div className="mb-4">
+                <p className="text-xs font-medium text-violet-700 mb-2">💡 Improvement Opportunities</p>
+                <div className="space-y-2">
+                  {performanceForecast.improvementOpportunities.slice(0, 2).map((opp, idx) => (
+                    <div key={idx} className="bg-white p-2 rounded text-xs">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium text-gray-700">{opp.metric}</span>
+                        <span className="text-green-600 font-semibold">
+                          Potential: {opp.potentialGain.toFixed(1)}s
+                        </span>
+                      </div>
+                      <p className="text-gray-500 text-xs">
+                        {opp.actionItems[0]} • {(opp.probability * 100).toFixed(0)}% probability
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Risk Assessment */}
+            {performanceForecast.riskAssessment.overallRisk !== "low" && (
+              <div className="bg-white p-3 rounded border-l-4 border-yellow-400">
+                <p className="text-xs font-medium text-yellow-800 mb-1">
+                  ⚠️ Risk Assessment: {performanceForecast.riskAssessment.overallRisk.toUpperCase()}
+                </p>
+                <p className="text-xs text-gray-600">
+                  {performanceForecast.riskAssessment.risks[0]?.description}
+                </p>
+              </div>
             )}
           </div>
         )}
