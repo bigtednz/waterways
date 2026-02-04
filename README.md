@@ -8,6 +8,7 @@ A performance-diagnostics system that quantifies not just how fast a team runs, 
 - **Competition Day & Run Queue**: Record competition days with flexible run queues that match the actual event order on the day
 - **Run-Level Analytics**: Like-for-like diagnostics across run types (A1, A3, A5, etc.)
 - **Competition Trends**: Overall performance tracking with median clean times and penalty analysis
+- **Goals & Tracking**: Set and track performance goals with auto-update from competition data, database persistence, and multi-device sync
 - **Coaching Insights**: Automated coaching summaries with drill recommendations
 - **Penalty Registry**: Verbatim rulebook references with taxonomy classification
 - **Run Library**: Data-driven run specifications stored as JSON

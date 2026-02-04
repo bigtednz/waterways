@@ -120,10 +120,17 @@ At the top of the Dashboard, you'll see a **"Goals Overview"** widget showing:
 ## Technical Details
 
 ### Data Storage
-- Goals are stored in **browser localStorage**
-- Key: `waterways_goals`
-- Format: JSON array of Goal objects
-- Persists across browser sessions
+- ✅ Goals are stored in **PostgreSQL database** (primary)
+- ✅ User-specific: Each user has their own goals
+- ✅ Multi-device sync: Goals sync across all devices
+- ✅ Fallback: Automatically falls back to localStorage if API unavailable
+- ✅ Migration: Automatic migration utility for localStorage → database
+
+### Database Schema
+- **Goals Table**: Stores all goal data with user association
+- **Goal History Table**: Tracks progress changes over time
+- **Enums**: GoalType, GoalStatus, GoalAutoUpdateSource
+- **Relations**: Goals linked to Users and Seasons
 
 ### Progress Calculation
 - **Time/Penalty/Consistency**: Lower is better
@@ -162,10 +169,20 @@ At the top of the Dashboard, you'll see a **"Goals Overview"** widget showing:
 
 ---
 
-## Future Enhancements (Coming Soon)
+## ✅ Completed Enhancements
 
-- Auto-update goals from performance data
-- Goal achievement notifications
-- Goal templates for quick creation
-- Goal history timeline
-- API integration for cloud storage
+- ✅ Auto-update goals from performance data
+- ✅ Goal achievement notifications
+- ✅ Goal templates for quick creation
+- ✅ Goal history timeline
+- ✅ API integration for cloud storage
+- ✅ Database persistence with multi-device sync
+- ✅ User-specific goal storage
+- ✅ Automatic migration from localStorage
+
+## Future Enhancements
+
+- Goal sharing between users
+- Goal analytics and insights
+- Goal reminders and notifications
+- Export goals to PDF/CSV
