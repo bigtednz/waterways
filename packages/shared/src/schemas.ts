@@ -152,3 +152,41 @@ export const competitorTimeUpdateSchema = z.object({
 export const reorderQueueSchema = z.object({
   queueItemIds: z.array(z.string()),
 });
+
+export const goalTypeSchema = z.enum(["TIME", "PENALTY", "CONSISTENCY", "COMPLETION"]);
+export const goalStatusSchema = z.enum(["ON_TRACK", "AT_RISK", "ACHIEVED", "MISSED", "NOT_STARTED"]);
+export const goalAutoUpdateSourceSchema = z.enum(["MEDIAN_CLEAN_TIME", "PENALTY_LOAD", "CONSISTENCY_IQR", "COMPLETION_RATE"]).nullable();
+
+export const goalHistoryEntrySchema = z.object({
+  date: z.string().datetime(),
+  current: z.number(),
+  progress: z.number(),
+  status: goalStatusSchema,
+  note: z.string().optional(),
+});
+
+export const createGoalSchema = z.object({
+  type: goalTypeSchema,
+  title: z.string().min(1),
+  description: z.string().optional(),
+  target: z.number().positive(),
+  current: z.number().nonnegative().default(0),
+  unit: z.string().min(1),
+  deadline: z.string().datetime().optional().nullable(),
+  seasonId: z.string().optional().nullable(),
+  autoUpdate: z.boolean().default(false),
+  autoUpdateSource: goalAutoUpdateSourceSchema,
+});
+
+export const updateGoalSchema = z.object({
+  type: goalTypeSchema.optional(),
+  title: z.string().min(1).optional(),
+  description: z.string().optional().nullable(),
+  target: z.number().positive().optional(),
+  current: z.number().nonnegative().optional(),
+  unit: z.string().min(1).optional(),
+  deadline: z.string().datetime().optional().nullable(),
+  seasonId: z.string().optional().nullable(),
+  autoUpdate: z.boolean().optional(),
+  autoUpdateSource: goalAutoUpdateSourceSchema,
+});

@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { Goal, GoalType, calculateProgress, calculateStatus } from "../lib/goals";
+import { Goal, GoalType, dbGoalToGoal, goalToDbGoal } from "../lib/goals";
 import { GoalCard } from "./GoalCard";
 import { GoalForm } from "./GoalForm";
 import { GoalTemplateSelector } from "./GoalTemplateSelector";
 import { updateAllAutoUpdateGoals } from "../lib/goalAutoUpdate";
 import { showGoalAchievement } from "../lib/goalNotifications";
+import { checkAndMigrateGoals } from "../lib/goalMigration";
 import api from "../lib/api";
 import type { CompetitionTrend } from "@waterways/shared";
 
@@ -29,38 +30,32 @@ export function GoalsManager({ seasonId, onGoalUpdate, competitionTrends = [] }:
       .catch(() => setSeasons([]));
   }, []);
 
-  // Load goals (using localStorage for now - can be replaced with API)
+  // Check for localStorage goals migration on mount
+  useEffect(() => {
+    // Only run migration check if the function is available
+    if (typeof checkAndMigrateGoals === 'function') {
+      checkAndMigrateGoals().catch(console.error);
+    }
+  }, []);
+
+  // Load goals from API (with fallback to localStorage if API not available)
   useEffect(() => {
     setLoading(true);
-    try {
-      const stored = localStorage.getItem("waterways_goals");
-      if (stored) {
-        const allGoals: Goal[] = JSON.parse(stored);
-        // Filter by season if provided
-        const filtered = seasonId
-          ? allGoals.filter(g => !g.seasonId || g.seasonId === seasonId)
-          : allGoals;
-        
-        // Update progress and status for each goal
-        // Ensure all optional fields exist for backward compatibility
-        let updatedGoals = filtered.map(goal => {
-          const progress = calculateProgress(goal.current, goal.target, goal.type);
-          const status = calculateStatus(progress, goal.deadline, goal.type);
-          return { 
-            ...goal, 
-            progress, 
-            status,
-            history: goal.history || [],
-            autoUpdate: goal.autoUpdate || false,
-            autoUpdateSource: goal.autoUpdateSource,
-            achievedAt: goal.achievedAt,
-          } as Goal;
-        });
+    const loadGoals = async () => {
+      try {
+        const params = seasonId ? { seasonId } : {};
+        const response = await api.get("/goals", { params });
+        const dbGoals = response.data || [];
+        // Ensure dbGoals is an array before mapping
+        if (!Array.isArray(dbGoals)) {
+          throw new Error("Invalid response format from API");
+        }
+        const frontendGoals: Goal[] = dbGoals.map(dbGoalToGoal);
         
         // Auto-update goals from performance data
         if (competitionTrends.length > 0) {
-          const previousGoals = [...updatedGoals];
-          updatedGoals = updateAllAutoUpdateGoals(updatedGoals, competitionTrends);
+          const previousGoals = [...frontendGoals];
+          const updatedGoals = updateAllAutoUpdateGoals(frontendGoals, competitionTrends);
           
           // Check for newly achieved goals and show notifications
           updatedGoals.forEach((goal, index) => {
@@ -70,123 +65,128 @@ export function GoalsManager({ seasonId, onGoalUpdate, competitionTrends = [] }:
             }
           });
           
-          // Save updated goals back to localStorage if auto-updates occurred
+          // Save auto-updated goals back to API
+          for (const goal of updatedGoals) {
+            const previous = previousGoals.find(p => p.id === goal.id);
+            if (previous && (
+              Math.abs(previous.current - goal.current) > 0.01 ||
+              previous.status !== goal.status
+            )) {
+              // Goal was auto-updated, save to API
+              try {
+                await api.put(`/goals/${goal.id}`, goalToDbGoal({
+                  current: goal.current,
+                }));
+              } catch (e) {
+                console.error(`Failed to save auto-updated goal ${goal.id}:`, e);
+              }
+            }
+          }
+          
+          setGoals(updatedGoals);
+        } else {
+          setGoals(frontendGoals);
+        }
+      } catch (error: any) {
+        console.error("Failed to load goals from API:", error);
+        // Fallback to localStorage if API endpoint doesn't exist yet (migration not applied)
+        // Check for 404, network errors, or any error that suggests the endpoint doesn't exist
+        const isEndpointMissing = 
+          error.response?.status === 404 || 
+          error.code === "ERR_NETWORK" ||
+          error.message?.includes("404") ||
+          !error.response; // No response means endpoint might not exist
+        
+        if (isEndpointMissing) {
           try {
             const stored = localStorage.getItem("waterways_goals");
             if (stored) {
-              const allGoals: Goal[] = JSON.parse(stored);
-              const updatedAllGoals = allGoals.map(g => {
-                const updated = updatedGoals.find(ug => ug.id === g.id);
-                return updated || g;
-              });
-              localStorage.setItem("waterways_goals", JSON.stringify(updatedAllGoals));
+              const localGoals: Goal[] = JSON.parse(stored);
+              const filtered = seasonId
+                ? localGoals.filter(g => !g.seasonId || g.seasonId === seasonId)
+                : localGoals;
+              setGoals(filtered);
+              console.log("Loaded goals from localStorage (fallback - API endpoint not available)");
+            } else {
+              setGoals([]);
             }
-          } catch (e) {
-            console.error("Failed to save auto-updated goals:", e);
+          } catch (localError) {
+            console.error("Failed to load goals from localStorage:", localError);
+            setGoals([]);
           }
+        } else {
+          // Other errors - just set empty array to prevent breaking
+          setGoals([]);
         }
-        
-        setGoals(updatedGoals);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error("Failed to load goals:", error);
-      setGoals([]);
-    } finally {
-      setLoading(false);
-    }
+    };
+    
+    loadGoals();
   }, [seasonId, competitionTrends]);
 
-  const saveGoal = (goalData: Omit<Goal, "id" | "createdAt" | "updatedAt" | "progress" | "status" | "history" | "achievedAt">) => {
+  const saveGoal = async (goalData: Omit<Goal, "id" | "createdAt" | "updatedAt" | "progress" | "status" | "history" | "achievedAt">) => {
     try {
-      const stored = localStorage.getItem("waterways_goals");
-      const allGoals: Goal[] = stored ? JSON.parse(stored) : [];
-      
-      const progress = calculateProgress(goalData.current, goalData.target, goalData.type);
-      const status = calculateStatus(progress, goalData.deadline, goalData.type);
-      
       if (editingGoal) {
-        // Update existing goal - preserve history
-        const existingGoal = allGoals.find(g => g.id === editingGoal.id);
-        const history = existingGoal?.history || [];
-        
-        // Add history entry if current value changed
-        if (existingGoal && Math.abs(existingGoal.current - goalData.current) > 0.01) {
-          history.push({
-            date: new Date().toISOString(),
-            current: goalData.current,
-            progress,
-            status,
-            note: "Manual update",
-          });
+        // Update existing goal
+        try {
+          const response = await api.put(`/goals/${editingGoal.id}`, goalToDbGoal(goalData));
+          const updatedGoal = dbGoalToGoal(response.data);
+          setGoals(goals.map(g => g.id === updatedGoal.id ? updatedGoal : g));
+        } catch (apiError: any) {
+          // Fallback to localStorage if API not available
+          if (apiError.response?.status === 404) {
+            throw new Error("API endpoint not available. Please apply database migration.");
+          }
+          throw apiError;
         }
-        
-        const updated = allGoals.map(g =>
-          g.id === editingGoal.id
-            ? {
-                ...g,
-                ...goalData,
-                progress,
-                status,
-                history: history.slice(-50), // Keep last 50 entries
-                updatedAt: new Date().toISOString(),
-                achievedAt: g.status !== "achieved" && status === "achieved" 
-                  ? new Date().toISOString() 
-                  : g.achievedAt,
-              } as Goal
-            : g
-        );
-        localStorage.setItem("waterways_goals", JSON.stringify(updated));
       } else {
         // Create new goal
-        const newGoal: Goal = {
-          id: `goal_${Date.now()}`,
-          ...goalData,
-          progress,
-          status,
-          history: [],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        localStorage.setItem("waterways_goals", JSON.stringify([...allGoals, newGoal]));
-      }
-      
-      // Reload goals
-      const updated = localStorage.getItem("waterways_goals");
-      if (updated) {
-        const allGoals: Goal[] = JSON.parse(updated);
-        const filtered = seasonId
-          ? allGoals.filter(g => !g.seasonId || g.seasonId === seasonId)
-          : allGoals;
-        const updatedGoals = filtered.map(goal => {
-          const p = calculateProgress(goal.current, goal.target, goal.type);
-          const s = calculateStatus(p, goal.deadline, goal.type);
-          return { ...goal, progress: p, status: s };
-        });
-        setGoals(updatedGoals);
+        try {
+          const response = await api.post("/goals", goalToDbGoal(goalData));
+          const newGoal = dbGoalToGoal(response.data);
+          setGoals([...goals, newGoal]);
+        } catch (apiError: any) {
+          // Fallback to localStorage if API not available
+          if (apiError.response?.status === 404) {
+            throw new Error("API endpoint not available. Please apply database migration.");
+          }
+          throw apiError;
+        }
       }
       
       setShowForm(false);
       setEditingGoal(undefined);
       onGoalUpdate?.();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to save goal:", error);
-      alert("Failed to save goal. Please try again.");
+      alert(error.message || "Failed to save goal. Please try again.");
     }
   };
 
-  const deleteGoal = (goalId: string) => {
+  const deleteGoal = async (goalId: string) => {
     if (!confirm("Are you sure you want to delete this goal?")) return;
     
     try {
-      const stored = localStorage.getItem("waterways_goals");
-      if (stored) {
-        const allGoals: Goal[] = JSON.parse(stored);
-        const updated = allGoals.filter(g => g.id !== goalId);
-        localStorage.setItem("waterways_goals", JSON.stringify(updated));
-        setGoals(goals.filter(g => g.id !== goalId));
-        onGoalUpdate?.();
+      try {
+        await api.delete(`/goals/${goalId}`);
+      } catch (apiError: any) {
+        // Fallback to localStorage if API not available
+        if (apiError.response?.status === 404) {
+          // Try localStorage fallback
+          const stored = localStorage.getItem("waterways_goals");
+          if (stored) {
+            const localGoals: Goal[] = JSON.parse(stored);
+            localStorage.setItem("waterways_goals", JSON.stringify(localGoals.filter(g => g.id !== goalId)));
+          }
+        } else {
+          throw apiError;
+        }
       }
-    } catch (error) {
+      setGoals(goals.filter(g => g.id !== goalId));
+      onGoalUpdate?.();
+    } catch (error: any) {
       console.error("Failed to delete goal:", error);
       alert("Failed to delete goal. Please try again.");
     }

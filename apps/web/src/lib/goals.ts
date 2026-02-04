@@ -34,6 +34,148 @@ export interface GoalHistoryEntry {
 }
 
 /**
+ * Database Goal type (with uppercase enums)
+ */
+export interface DbGoal {
+  id: string;
+  userId: string;
+  type: "TIME" | "PENALTY" | "CONSISTENCY" | "COMPLETION";
+  title: string;
+  description?: string | null;
+  target: number;
+  current: number;
+  unit: string;
+  deadline?: string | null;
+  seasonId?: string | null;
+  progress: number;
+  status: "ON_TRACK" | "AT_RISK" | "ACHIEVED" | "MISSED" | "NOT_STARTED";
+  achievedAt?: string | null;
+  autoUpdate: boolean;
+  autoUpdateSource?: "MEDIAN_CLEAN_TIME" | "PENALTY_LOAD" | "CONSISTENCY_IQR" | "COMPLETION_RATE" | null;
+  createdAt: string;
+  updatedAt: string;
+  season?: { id: string; name: string; year: number } | null;
+  history?: DbGoalHistory[];
+}
+
+export interface DbGoalHistory {
+  id: string;
+  goalId: string;
+  date: string;
+  current: number;
+  progress: number;
+  status: "ON_TRACK" | "AT_RISK" | "ACHIEVED" | "MISSED" | "NOT_STARTED";
+  note?: string | null;
+}
+
+/**
+ * Convert database goal status to frontend format
+ */
+function dbStatusToStatus(dbStatus: string): GoalStatus {
+  const map: Record<string, GoalStatus> = {
+    "ON_TRACK": "on-track",
+    "AT_RISK": "at-risk",
+    "ACHIEVED": "achieved",
+    "MISSED": "missed",
+    "NOT_STARTED": "not-started",
+  };
+  return map[dbStatus] || "not-started";
+}
+
+/**
+ * Convert frontend goal status to database format
+ */
+function statusToDbStatus(status: GoalStatus): string {
+  const map: Record<GoalStatus, string> = {
+    "on-track": "ON_TRACK",
+    "at-risk": "AT_RISK",
+    "achieved": "ACHIEVED",
+    "missed": "MISSED",
+    "not-started": "NOT_STARTED",
+  };
+  return map[status] || "NOT_STARTED";
+}
+
+/**
+ * Convert database auto-update source to frontend format
+ */
+function dbAutoUpdateSourceToSource(dbSource: string | null | undefined): Goal["autoUpdateSource"] | undefined {
+  if (!dbSource) return undefined;
+  const map: Record<string, Goal["autoUpdateSource"]> = {
+    "MEDIAN_CLEAN_TIME": "medianCleanTime",
+    "PENALTY_LOAD": "penaltyLoad",
+    "CONSISTENCY_IQR": "consistencyIQR",
+    "COMPLETION_RATE": "completionRate",
+  };
+  return map[dbSource];
+}
+
+/**
+ * Convert frontend auto-update source to database format
+ */
+function sourceToDbAutoUpdateSource(source: Goal["autoUpdateSource"] | undefined): string | null {
+  if (!source) return null;
+  const map: Record<string, string> = {
+    "medianCleanTime": "MEDIAN_CLEAN_TIME",
+    "penaltyLoad": "PENALTY_LOAD",
+    "consistencyIQR": "CONSISTENCY_IQR",
+    "completionRate": "COMPLETION_RATE",
+  };
+  return map[source] || null;
+}
+
+/**
+ * Convert database goal to frontend goal format
+ */
+export function dbGoalToGoal(dbGoal: DbGoal): Goal {
+  return {
+    id: dbGoal.id,
+    type: dbGoal.type.toLowerCase() as GoalType,
+    title: dbGoal.title,
+    description: dbGoal.description || undefined,
+    target: dbGoal.target,
+    current: dbGoal.current,
+    unit: dbGoal.unit,
+    deadline: dbGoal.deadline || undefined,
+    seasonId: dbGoal.seasonId || undefined,
+    createdAt: dbGoal.createdAt,
+    updatedAt: dbGoal.updatedAt,
+    progress: dbGoal.progress,
+    status: dbStatusToStatus(dbGoal.status),
+    history: dbGoal.history?.map(h => ({
+      date: h.date,
+      current: h.current,
+      progress: h.progress,
+      status: dbStatusToStatus(h.status),
+      note: h.note || undefined,
+    })),
+    achievedAt: dbGoal.achievedAt || undefined,
+    autoUpdate: dbGoal.autoUpdate,
+    autoUpdateSource: dbAutoUpdateSourceToSource(dbGoal.autoUpdateSource),
+  };
+}
+
+/**
+ * Convert frontend goal to database format for API
+ */
+export function goalToDbGoal(goal: Partial<Goal>): any {
+  return {
+    ...(goal.type && { type: goal.type.toUpperCase() }),
+    ...(goal.title && { title: goal.title }),
+    ...(goal.description !== undefined && { description: goal.description || null }),
+    ...(goal.target !== undefined && { target: goal.target }),
+    ...(goal.current !== undefined && { current: goal.current }),
+    ...(goal.unit && { unit: goal.unit }),
+    ...(goal.deadline !== undefined && { deadline: goal.deadline || null }),
+    ...(goal.seasonId !== undefined && { seasonId: goal.seasonId || null }),
+    ...(goal.autoUpdate !== undefined && { autoUpdate: goal.autoUpdate }),
+    ...(goal.autoUpdateSource !== undefined && { 
+      autoUpdateSource: sourceToDbAutoUpdateSource(goal.autoUpdateSource)
+    }),
+  };
+}
+
+/**
  * Calculate goal progress (0-100)
  */
 export function calculateProgress(current: number, target: number, type: GoalType): number {

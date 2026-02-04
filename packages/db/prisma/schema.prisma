@@ -26,6 +26,7 @@ model User {
   prescriptions     Prescription[]
   analyticsRuns     AnalyticsRun[]
   scenarios         Scenario[]
+  goals             Goal[]
 
   @@map("users")
 }
@@ -40,6 +41,7 @@ model Season {
   updatedAt   DateTime      @updatedAt
 
   competitions Competition[]
+  goals        Goal[]
 
   @@unique([year, name])
   @@map("seasons")
@@ -328,4 +330,71 @@ model CompetitorTime {
 
   @@index([queueItemId])
   @@map("competitor_times")
+}
+
+enum GoalType {
+  TIME
+  PENALTY
+  CONSISTENCY
+  COMPLETION
+}
+
+enum GoalStatus {
+  ON_TRACK
+  AT_RISK
+  ACHIEVED
+  MISSED
+  NOT_STARTED
+}
+
+enum GoalAutoUpdateSource {
+  MEDIAN_CLEAN_TIME
+  PENALTY_LOAD
+  CONSISTENCY_IQR
+  COMPLETION_RATE
+}
+
+model Goal {
+  id              String              @id @default(cuid())
+  userId          String
+  type            GoalType
+  title           String
+  description     String?
+  target          Float
+  current         Float
+  unit            String              // "seconds", "percentage", "count", etc.
+  deadline        DateTime?
+  seasonId        String?
+  progress        Float               @default(0) // 0-100, calculated
+  status          GoalStatus          @default(NOT_STARTED)
+  achievedAt      DateTime?
+  autoUpdate      Boolean             @default(false)
+  autoUpdateSource GoalAutoUpdateSource?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  season          Season?             @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+  history         GoalHistory[]
+
+  @@index([userId])
+  @@index([seasonId])
+  @@index([status])
+  @@map("goals")
+}
+
+model GoalHistory {
+  id              String              @id @default(cuid())
+  goalId          String
+  date            DateTime            @default(now())
+  current         Float
+  progress        Float               // 0-100
+  status          GoalStatus
+  note            String?
+
+  goal            Goal                @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([goalId])
+  @@index([date])
+  @@map("goal_history")
 }

@@ -17,6 +17,7 @@ import { analyticsRouter } from "./routes/analytics.js";
 import { scenariosRouter } from "./routes/scenarios.js";
 import { usersRouter } from "./routes/users.js";
 import { supportRouter } from "./routes/support.js";
+import { goalsRouter } from "./routes/goals.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { prisma } from "@waterways/db";
 import bcrypt from "bcryptjs";
@@ -205,6 +206,7 @@ app.use("/api/analytics", analyticsRouter);
 app.use("/api/scenarios", scenariosRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/support", supportRouter);
+app.use("/api/goals", goalsRouter);
 
 app.use(errorHandler);
 
