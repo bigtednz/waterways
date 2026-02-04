@@ -2,6 +2,7 @@ import { Outlet, Link, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { auth, User } from "../lib/auth";
 import { SupportModal } from "./SupportModal";
+import { ToastContainer } from "./Toast";
 
 const navItems = [
   { path: "/app/dashboard", label: "Dashboard" },
@@ -176,6 +177,7 @@ export function Layout() {
       </div>
 
       <SupportModal isOpen={supportModalOpen} onClose={() => setSupportModalOpen(false)} />
+      <ToastContainer />
     </div>
   );
 }

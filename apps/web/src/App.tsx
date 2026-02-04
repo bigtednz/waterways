@@ -8,6 +8,7 @@ import { CompetitionDetailPage } from "./pages/CompetitionDetailPage";
 import { CreateCompetitionPage } from "./pages/CreateCompetitionPage";
 import { CompetitionDaysPage } from "./pages/CompetitionDaysPage";
 import { CreateCompetitionDayPage } from "./pages/CreateCompetitionDayPage";
+import { EditCompetitionDayPage } from "./pages/EditCompetitionDayPage";
 import { CompetitionDayDetailPage } from "./pages/CompetitionDayDetailPage";
 import { AnalysisPage } from "./pages/AnalysisPage";
 import { RunLibraryPage } from "./pages/RunLibraryPage";
@@ -45,6 +46,7 @@ function App() {
           <Route path="competition-days">
             <Route index element={<CompetitionDaysPage />} />
             <Route path="new" element={<CreateCompetitionDayPage />} />
+            <Route path=":id/edit" element={<EditCompetitionDayPage />} />
             <Route path=":id" element={<CompetitionDayDetailPage />} />
           </Route>
           <Route path="analysis" element={<AnalysisPage />} />

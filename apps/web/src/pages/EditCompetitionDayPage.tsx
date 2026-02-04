@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import api from "../lib/api";
 
-export function CreateCompetitionDayPage() {
+export function EditCompetitionDayPage() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
+  const { id } = useParams<{ id: string }>();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showOptionalFields, setShowOptionalFields] = useState(false);
   const [challengeSuggestions, setChallengeSuggestions] = useState<string[]>([]);
@@ -12,37 +14,54 @@ export function CreateCompetitionDayPage() {
   const [showChallengeSuggestions, setShowChallengeSuggestions] = useState(false);
   const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
 
-  // Default to today in NZ timezone (format: YYYY-MM-DD)
-  const getTodayNZ = () => {
-    const now = new Date();
-    const nzDate = new Date(now.toLocaleString("en-US", { timeZone: "Pacific/Auckland" }));
-    return nzDate.toISOString().split("T")[0];
-  };
-
   const [formData, setFormData] = useState({
-    date: getTodayNZ(),
+    date: "",
     challengeName: "",
     locationName: "",
     trackName: "",
     notes: "",
   });
   const [teams, setTeams] = useState<string[]>([]);
-  const [teamsInput, setTeamsInput] = useState(""); // For comma-separated input
+  const [teamsInput, setTeamsInput] = useState("");
 
-  // Load previous competition days for autocomplete
+  // Load competition day data
   useEffect(() => {
-    api
-      .get("/competition-days")
-      .then((res: any) => {
+    if (!id) return;
+
+    Promise.all([
+      api.get(`/competition-days/${id}`).then((res: any) => {
+        const day = res.data;
+        const date = new Date(day.date);
+        const dateStr = date.toISOString().split("T")[0];
+        
+        setFormData({
+          date: dateStr,
+          challengeName: day.challengeName || "",
+          locationName: day.locationName || "",
+          trackName: day.trackName || "",
+          notes: day.notes || "",
+        });
+
+        if (day.teams && Array.isArray(day.teams)) {
+          setTeams(day.teams);
+          setTeamsInput(day.teams.join(", "));
+        }
+        setShowOptionalFields(!!(day.trackName || day.notes));
+      }),
+      api.get("/competition-days").then((res: any) => {
         const days = res.data || [];
-        // Extract unique challenge names and locations
         const challenges = [...new Set(days.map((d: any) => d.challengeName).filter(Boolean))].slice(0, 10) as string[];
         const locations = [...new Set(days.map((d: any) => d.locationName).filter(Boolean))].slice(0, 10) as string[];
         setChallengeSuggestions(challenges);
         setLocationSuggestions(locations);
+      }),
+    ])
+      .catch((err: any) => {
+        console.error("Failed to load competition day:", err);
+        setError(err.response?.data?.error || "Failed to load competition day");
       })
-      .catch(console.error);
-  }, []);
+      .finally(() => setLoading(false));
+  }, [id]);
 
   // Parse comma-separated teams
   const handleTeamsInputChange = (value: string) => {
@@ -52,20 +71,22 @@ export function CreateCompetitionDayPage() {
         .split(/[,\n]/)
         .map((t) => t.trim())
         .filter((t) => t.length > 0);
-      setTeams([...new Set(parsed)]); // Remove duplicates
+      setTeams([...new Set(parsed)]);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!id) return;
+
     setError("");
-    setLoading(true);
+    setSaving(true);
 
     try {
       // Convert date to ISO datetime at midnight NZ time
       const dateTime = new Date(`${formData.date}T00:00:00+13:00`).toISOString();
 
-      const response = await api.post("/competition-days", {
+      await api.put(`/competition-days/${id}`, {
         ...formData,
         date: dateTime,
         trackName: formData.trackName || undefined,
@@ -73,30 +94,41 @@ export function CreateCompetitionDayPage() {
         teams: teams.length > 0 ? teams : undefined,
       });
 
-      // Redirect to queue builder
-      navigate(`/app/competition-days/${response.data.id}`);
+      // Redirect back to detail page
+      navigate(`/app/competition-days/${id}`);
     } catch (err: any) {
-      console.error("Failed to create competition day:", err);
-      setError(err.response?.data?.error || err.message || "Failed to create competition day");
+      console.error("Failed to update competition day:", err);
+      setError(err.response?.data?.error || err.message || "Failed to update competition day");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
+          <p className="text-gray-600">Loading competition day...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
         <button
-          onClick={() => navigate("/app/competition-days")}
+          onClick={() => navigate(`/app/competition-days/${id}`)}
           className="text-blue-600 hover:underline mb-4 flex items-center gap-2"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
-          Back to Competition Days
+          Back to Competition Day
         </button>
-        <h1 className="text-3xl font-bold text-gray-900">New Competition Day</h1>
-        <p className="text-gray-600 mt-2">Set up a competition day and build your run queue</p>
+        <h1 className="text-3xl font-bold text-gray-900">Edit Competition Day</h1>
+        <p className="text-gray-600 mt-2">Update competition day details</p>
       </div>
 
       {error && (
@@ -137,7 +169,6 @@ export function CreateCompetitionDayPage() {
             onBlur={() => setTimeout(() => setShowChallengeSuggestions(false), 200)}
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
             placeholder="e.g., Spring Championship"
-            list="challenge-suggestions"
           />
           {showChallengeSuggestions && challengeSuggestions.length > 0 && formData.challengeName && (
             <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
@@ -339,26 +370,26 @@ export function CreateCompetitionDayPage() {
         <div className="flex gap-4 justify-end pt-4 border-t">
           <button
             type="button"
-            onClick={() => navigate("/app/competition-days")}
+            onClick={() => navigate(`/app/competition-days/${id}`)}
             className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors"
           >
             Cancel
           </button>
           <button
             type="submit"
-            disabled={loading || !formData.challengeName || !formData.locationName}
+            disabled={saving || !formData.challengeName || !formData.locationName}
             className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors flex items-center gap-2"
           >
-            {loading ? (
+            {saving ? (
               <>
                 <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                Creating...
+                Saving...
               </>
             ) : (
               <>
-                Create & Build Queue
+                Save Changes
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </>
             )}

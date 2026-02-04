@@ -281,6 +281,7 @@ model CompetitionDay {
   locationName String
   trackName   String?
   notes       String?
+  teams       Json?         // Array of team names: ["Team A", "Team B", ...]
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -297,12 +298,34 @@ model RunQueueItem {
   status          RunQueueStatus  @default(PLANNED)
   attemptNo       Int             @default(1)
   notes           String?
+  totalTimeSeconds Float?
+  penaltySeconds  Float?          @default(0)
+  splitTimes      Json?           // Phase times: { "phase1": 30.5, "phase2": 45.2, ... }
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
   competitionDay CompetitionDay  @relation(fields: [competitionDayId], references: [id], onDelete: Cascade)
+  competitorTimes CompetitorTime[]
 
   @@unique([competitionDayId, sequenceNo])
   @@index([competitionDayId])
   @@map("run_queue_items")
+}
+
+model CompetitorTime {
+  id              String          @id @default(cuid())
+  queueItemId     String
+  teamName        String
+  ran             Boolean         @default(true)  // Did this team run?
+  totalTimeSeconds Float?         // Optional - can track ran status without time
+  penaltySeconds  Float?         @default(0)
+  splitTimes      Json?           // Phase times: { "phase1": 30.5, "phase2": 45.2, ... }
+  notes           String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  queueItem       RunQueueItem    @relation(fields: [queueItemId], references: [id], onDelete: Cascade)
+
+  @@index([queueItemId])
+  @@map("competitor_times")
 }

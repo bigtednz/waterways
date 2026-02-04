@@ -84,3 +84,83 @@ code {
     }
   }
 }
+
+/* Smooth animations for competition day page */
+@layer utilities {
+  .transition-all {
+    transition: all 0.2s ease-in-out;
+  }
+  
+  .animate-slide-down {
+    animation: slideDown 0.3s ease-out;
+  }
+  
+  @keyframes slideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  .animate-fade-in {
+    animation: fadeIn 0.2s ease-in;
+  }
+  
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  
+  .animate-stagger {
+    animation: stagger 0.3s ease-out;
+  }
+  
+  @keyframes stagger {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+/* Print styles for competition day */
+@media print {
+  body {
+    background: white;
+  }
+  
+  /* Hide non-essential elements */
+  nav,
+  .no-print,
+  button:not(.print-keep) {
+    display: none !important;
+  }
+  
+  /* Show only essential content */
+  .print-only {
+    display: block !important;
+  }
+  
+  /* Optimize page breaks */
+  .queue-item {
+    page-break-inside: avoid;
+  }
+  
+  /* Remove shadows and borders for cleaner print */
+  .shadow-lg,
+  .shadow-md {
+    box-shadow: none !important;
+  }
+}

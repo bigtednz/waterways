@@ -111,6 +111,7 @@ export const competitionDaySchema = z.object({
   locationName: z.string().min(1),
   trackName: z.string().optional(),
   notes: z.string().optional(),
+  teams: z.array(z.string().min(1)).optional(),
 });
 
 export const runQueueItemSchema = z.object({
@@ -124,6 +125,27 @@ export const runQueueItemUpdateSchema = z.object({
   eventCode: z.string().min(1).optional(),
   status: z.enum(["PLANNED", "RUN", "SKIPPED"]).optional(),
   attemptNo: z.number().int().positive().optional(),
+  notes: z.string().optional(),
+  totalTimeSeconds: z.number().positive().optional().nullable(),
+  penaltySeconds: z.number().nonnegative().optional().nullable(),
+  splitTimes: z.record(z.number()).optional().nullable(),
+});
+
+export const competitorTimeSchema = z.object({
+  teamName: z.string().min(1),
+  ran: z.boolean().default(true),
+  totalTimeSeconds: z.number().positive().optional().nullable(),
+  penaltySeconds: z.number().nonnegative().optional().nullable().default(0),
+  splitTimes: z.record(z.number()).optional().nullable(),
+  notes: z.string().optional(),
+});
+
+export const competitorTimeUpdateSchema = z.object({
+  teamName: z.string().min(1).optional(),
+  ran: z.boolean().optional(),
+  totalTimeSeconds: z.number().positive().optional().nullable(),
+  penaltySeconds: z.number().nonnegative().optional().nullable(),
+  splitTimes: z.record(z.number()).optional().nullable(),
   notes: z.string().optional(),
 });
 

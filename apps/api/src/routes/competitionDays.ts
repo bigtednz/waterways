@@ -1,10 +1,13 @@
 import { Router } from "express";
 import { prisma } from "@waterways/db";
+import { Prisma } from "@prisma/client";
 import {
   competitionDaySchema,
   runQueueItemSchema,
   runQueueItemUpdateSchema,
   reorderQueueSchema,
+  competitorTimeSchema,
+  competitorTimeUpdateSchema,
 } from "@waterways/shared";
 import { authenticate, requireRole, AuthRequest } from "../middleware/auth.js";
 
@@ -37,6 +40,14 @@ competitionDaysRouter.get("/:id", async (req, res, next) => {
       include: {
         queueItems: {
           orderBy: { sequenceNo: "asc" },
+          include: {
+            competitorTimes: {
+              orderBy: [
+                { ran: "desc" }, // Ran teams first
+                { totalTimeSeconds: "asc" }, // Fastest times first (nulls will be handled in frontend)
+              ],
+            },
+          },
         },
       },
     });
@@ -86,6 +97,35 @@ competitionDaysRouter.put(
         },
       });
       res.json(competitionDay);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// Delete competition day
+competitionDaysRouter.delete(
+  "/:id",
+  requireRole("ADMIN", "COACH"),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const competitionDayId = req.params.id;
+
+      // Check if competition day exists
+      const competitionDay = await prisma.competitionDay.findUnique({
+        where: { id: competitionDayId },
+      });
+
+      if (!competitionDay) {
+        return res.status(404).json({ error: "Competition day not found" });
+      }
+
+      // Delete the competition day (cascade will delete queue items and competitor times)
+      await prisma.competitionDay.delete({
+        where: { id: competitionDayId },
+      });
+
+      res.json({ message: "Competition day deleted successfully" });
     } catch (error) {
       next(error);
     }
@@ -146,9 +186,14 @@ competitionDaysRouter.put(
   async (req: AuthRequest, res, next) => {
     try {
       const data = runQueueItemUpdateSchema.parse(req.body);
+      // Handle JSON null for splitTimes
+      const updateData: any = { ...data };
+      if (data.splitTimes !== undefined) {
+        updateData.splitTimes = data.splitTimes === null ? Prisma.JsonNull : data.splitTimes;
+      }
       const queueItem = await prisma.runQueueItem.update({
         where: { id: req.params.id },
-        data,
+        data: updateData,
       });
       res.json(queueItem);
     } catch (error) {
@@ -235,6 +280,105 @@ competitionDaysRouter.put(
       });
 
       res.json(updatedQueue);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// Get competitor times for a queue item
+competitionDaysRouter.get(
+  "/queue/:id/competitors",
+  async (req, res, next) => {
+    try {
+      const competitorTimes = await prisma.competitorTime.findMany({
+        where: { queueItemId: req.params.id },
+        orderBy: [
+          { ran: "desc" }, // Ran teams first
+          { totalTimeSeconds: "asc" }, // Fastest times first (nulls will be handled in frontend)
+        ],
+      });
+      res.json(competitorTimes);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// Add competitor time to a queue item
+competitionDaysRouter.post(
+  "/queue/:id/competitors",
+  requireRole("ADMIN", "COACH"),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const data = competitorTimeSchema.parse(req.body);
+      // Handle JSON for splitTimes and optional totalTimeSeconds
+      const createData: any = {
+        ...data,
+        queueItemId: req.params.id,
+        ran: data.ran !== undefined ? data.ran : true,
+      };
+      if (data.totalTimeSeconds === undefined) {
+        createData.totalTimeSeconds = null;
+      }
+      if (data.penaltySeconds === undefined) {
+        createData.penaltySeconds = null;
+      }
+      if (data.splitTimes !== undefined) {
+        // If splitTimes is provided and has values, use it; otherwise set to null
+        createData.splitTimes = data.splitTimes && Object.keys(data.splitTimes).length > 0 
+          ? data.splitTimes 
+          : Prisma.JsonNull;
+      }
+      const competitorTime = await prisma.competitorTime.create({
+        data: createData,
+      });
+      res.status(201).json(competitorTime);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// Update competitor time
+competitionDaysRouter.put(
+  "/competitors/:id",
+  requireRole("ADMIN", "COACH"),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const data = competitorTimeUpdateSchema.parse(req.body);
+      // Handle JSON null for splitTimes and optional fields
+      const updateData: any = { ...data };
+      if (data.splitTimes !== undefined) {
+        updateData.splitTimes = data.splitTimes === null ? Prisma.JsonNull : data.splitTimes;
+      }
+      if (data.totalTimeSeconds === null) {
+        updateData.totalTimeSeconds = null;
+      }
+      if (data.penaltySeconds === null) {
+        updateData.penaltySeconds = null;
+      }
+      const competitorTime = await prisma.competitorTime.update({
+        where: { id: req.params.id },
+        data: updateData,
+      });
+      res.json(competitorTime);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// Delete competitor time
+competitionDaysRouter.delete(
+  "/competitors/:id",
+  requireRole("ADMIN", "COACH"),
+  async (req: AuthRequest, res, next) => {
+    try {
+      await prisma.competitorTime.delete({
+        where: { id: req.params.id },
+      });
+      res.status(204).send();
     } catch (error) {
       next(error);
     }

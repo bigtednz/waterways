@@ -8,6 +8,8 @@ The Competition Day feature allows you to record and manage competition events o
 
 - **Flexible Event Order**: Build a queue in the actual order events are run
 - **Event Status Tracking**: Mark events as PLANNED, RUN, or SKIPPED
+- **Run Time Entry**: Enter total time and penalty time for each queue item
+- **Clean Time Calculation**: Automatically calculates and displays clean time
 - **Rerun Support**: Add additional attempts for the same event
 - **Quick Actions**: Large, touch-friendly buttons for fast on-the-day use
 - **Notes**: Add and edit notes for each queue item
@@ -51,6 +53,9 @@ Each queue item shows:
   - 🔵 **PLANNED**: Blue badge - Event is scheduled
   - 🟢 **RUN**: Green badge - Event has been completed
   - ⚪ **SKIPPED**: Gray badge - Event was skipped
+- **Time Entry Fields**: Enter total time and penalty time for each run (required)
+- **Split Times**: Optional phase-by-phase breakdown (only if run spec has phases defined)
+- **Clean Time Display**: Automatically calculated and displayed
 
 **Available Actions:**
 
@@ -68,13 +73,24 @@ Each queue item shows:
    - Automatically increments attempt number
    - Inserts immediately after the current item
 
-4. **Edit Notes** (✏️ or "+ Notes")
+4. **Enter Run Times**
+   - **Total Time (s)**: Enter the total time in seconds (e.g., `125.5`) - **Required**
+   - **Penalty (s)**: Enter penalty time in seconds (e.g., `5.0` or `0`) - **Required**
+   - **Clean Time**: Automatically calculated and displayed
+   - **Split Times (Optional)**: Click the "+" button to expand and enter phase-by-phase times
+     - Only available if a run specification with phases exists for this event code
+     - Leave blank for historic records or when split times aren't available
+     - Useful for detailed breakdown analysis when available
+   - Click **"Save Time"** to save the times for that queue item
+   - Times are saved per queue item and persist when you reload the page
+
+5. **Edit Notes** (✏️ or "+ Notes")
    - Click to add or edit notes for the queue item
    - Type your notes and press Enter or click "Save"
    - Press Escape to cancel
    - Notes are useful for recording observations, issues, or reminders
 
-5. **Remove** (Red X)
+6. **Remove** (Red X)
    - Removes the item from the queue
    - Confirmation dialog prevents accidental deletion
    - Automatically renumbers remaining items
@@ -91,35 +107,44 @@ Each queue item shows:
 ### During Competition
 
 1. As events are about to run, mark them as **RUN** (green button)
-2. If an event is skipped, mark it as **SKIPPED** (gray button)
-3. Add notes for any important observations:
+2. **Enter run times** as events are completed:
+   - Enter **Total Time** in seconds (e.g., `125.5`)
+   - Enter **Penalty Time** in seconds (e.g., `5.0` or `0`)
+   - Click **"Save Time"** to save
+   - Clean time is automatically calculated and displayed
+3. If an event is skipped, mark it as **SKIPPED** (gray button)
+4. Add notes for any important observations:
    - Click the ✏️ or "+ Notes" button
    - Type your note
    - Press Enter to save
-4. If a rerun is needed:
+5. If a rerun is needed:
    - Click **Rerun** on the completed event
    - The new attempt appears immediately after
-   - Mark it as RUN when completed
+   - Enter times and mark it as RUN when completed
 
 ### After Competition
 
 - Review the queue to see the actual order of events
+- View all entered times and clean time calculations
 - Notes provide context for later analysis
 - Status badges show what was completed vs skipped
+- All times are saved and can be exported or linked to competitions later
 
 ## Tips for Fast Use
 
 1. **Use Quick-Add Buttons**: For common events, use the quick-add buttons instead of typing
-2. **Keyboard Shortcuts**: 
+2. **Enter Times Immediately**: As each event completes, enter the times right away while they're fresh
+3. **Keyboard Shortcuts**: 
    - Press Enter in custom event input to add
    - Press Enter in notes field to save
    - Press Escape in notes field to cancel
-3. **Touch-Friendly**: All buttons are sized for easy mobile use (minimum 44px height)
-4. **Auto-Save**: All changes save automatically - no "Save" button needed
-5. **Visual Feedback**: 
+4. **Touch-Friendly**: All buttons are sized for easy mobile use (minimum 44px height)
+5. **Auto-Save**: Status changes save automatically - times require clicking "Save Time"
+6. **Visual Feedback**: 
    - Green background = RUN
    - Gray background = SKIPPED
    - White background = PLANNED
+7. **Time Format**: Times are entered in seconds (e.g., `125.5` = 2 minutes 5.5 seconds)
 
 ## Technical Details
 

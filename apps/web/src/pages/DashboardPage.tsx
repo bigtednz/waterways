@@ -16,6 +16,8 @@ import {
 import api from "../lib/api";
 import { formatDate, formatTime } from "../lib/utils";
 import type { CompetitionTrend, DriverAnalysis } from "@waterways/shared";
+import { GoalsManager } from "../components/GoalsManager";
+import { Goal, calculateProgress, calculateStatus } from "../lib/goals";
 
 interface Season {
   id: string;
@@ -58,6 +60,7 @@ export function DashboardPage() {
     trends: true,
     drivers: true,
   });
+  const [goals, setGoals] = useState<Goal[]>([]);
 
   // Load seasons first, then set default season
   useEffect(() => {
@@ -90,6 +93,27 @@ export function DashboardPage() {
         setScenarios([]);
       });
   }, []);
+
+  // Load goals
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("waterways_goals");
+      if (stored) {
+        const allGoals: Goal[] = JSON.parse(stored);
+        const filtered = selectedSeasonId
+          ? allGoals.filter(g => !g.seasonId || g.seasonId === selectedSeasonId)
+          : allGoals;
+        const updatedGoals = filtered.map(goal => {
+          const progress = calculateProgress(goal.current, goal.target, goal.type);
+          const status = calculateStatus(progress, goal.deadline, goal.type);
+          return { ...goal, progress, status };
+        });
+        setGoals(updatedGoals);
+      }
+    } catch (error) {
+      console.error("Failed to load goals:", error);
+    }
+  }, [selectedSeasonId]);
 
   // Load analytics data when season is selected
   useEffect(() => {
@@ -339,6 +363,79 @@ export function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Goals Summary */}
+      {goals.length > 0 && (
+        <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-lg shadow-lg p-6 border-2 border-purple-200">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                🎯 Goals Overview
+              </h2>
+              <p className="text-sm text-gray-600 mt-1">Track your progress toward performance goals</p>
+            </div>
+            <Link
+              to="#goals"
+              className="text-sm text-purple-600 hover:text-purple-800 font-medium"
+            >
+              View All →
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {(() => {
+              const active = goals.filter(g => g.status !== "achieved" && g.status !== "missed");
+              const achieved = goals.filter(g => g.status === "achieved");
+              const onTrack = goals.filter(g => g.status === "on-track");
+              const atRisk = goals.filter(g => g.status === "at-risk");
+              
+              return (
+                <>
+                  <div className="bg-white rounded-lg p-4 border-2 border-blue-200">
+                    <p className="text-3xl font-bold text-blue-900">{active.length}</p>
+                    <p className="text-sm text-blue-700 font-medium mt-1">Active Goals</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-4 border-2 border-green-200">
+                    <p className="text-3xl font-bold text-green-900">{achieved.length}</p>
+                    <p className="text-sm text-green-700 font-medium mt-1">Achieved</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-4 border-2 border-blue-200">
+                    <p className="text-3xl font-bold text-blue-900">{onTrack.length}</p>
+                    <p className="text-sm text-blue-700 font-medium mt-1">On Track</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-4 border-2 border-yellow-200">
+                    <p className="text-3xl font-bold text-yellow-900">{atRisk.length}</p>
+                    <p className="text-sm text-yellow-700 font-medium mt-1">At Risk</p>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+          {goals.filter(g => g.status === "on-track" || g.status === "at-risk").length > 0 && (
+            <div className="mt-4 space-y-2">
+              <p className="text-sm font-semibold text-gray-700">Recent Progress:</p>
+              {goals
+                .filter(g => g.status === "on-track" || g.status === "at-risk")
+                .slice(0, 3)
+                .map(goal => (
+                  <div key={goal.id} className="bg-white rounded-lg p-3 border border-gray-200">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium text-gray-900">{goal.title}</span>
+                      <span className="text-xs font-semibold text-gray-600">{goal.progress.toFixed(0)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full transition-all ${
+                          goal.status === "on-track" ? "bg-blue-500" : "bg-yellow-500"
+                        }`}
+                        style={{ width: `${Math.min(100, goal.progress)}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Performance Score & Quick Insights */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -809,6 +906,34 @@ export function DashboardPage() {
             ))
           )}
         </div>
+      </div>
+
+      {/* Goals & Targets Section */}
+      <div id="goals" className="bg-white rounded-lg shadow-lg p-6">
+        <GoalsManager 
+          seasonId={selectedSeasonId}
+          competitionTrends={competitionTrends}
+          onGoalUpdate={() => {
+            // Reload goals when updated
+            try {
+              const stored = localStorage.getItem("waterways_goals");
+              if (stored) {
+                const allGoals: Goal[] = JSON.parse(stored);
+                const filtered = selectedSeasonId
+                  ? allGoals.filter(g => !g.seasonId || g.seasonId === selectedSeasonId)
+                  : allGoals;
+                const updatedGoals = filtered.map(goal => {
+                  const progress = calculateProgress(goal.current, goal.target, goal.type);
+                  const status = calculateStatus(progress, goal.deadline, goal.type);
+                  return { ...goal, progress, status };
+                });
+                setGoals(updatedGoals);
+              }
+            } catch (error) {
+              console.error("Failed to reload goals:", error);
+            }
+          }}
+        />
       </div>
     </div>
   );
