@@ -638,20 +638,12 @@ export function CompetitionDayDetailPage() {
 
   const handleTimeChange = (itemId: string, field: "cleanTime" | "penalty", value: string) => {
     setTimeEntries((prev) => {
-      // Format to 2 decimal places if it's a valid number
-      let formattedValue = value;
-      if (value && value.trim() && !isNaN(parseFloat(value))) {
-        const num = parseFloat(value);
-        if (!isNaN(num)) {
-          formattedValue = roundToTwoDecimals(num).toFixed(2);
-        }
-      }
-      
+      // Allow typing freely - only restrict to valid decimal input (digits, one dot, optional minus)
+      const sanitized = value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1");
       const newEntry = {
         ...prev[itemId] || { cleanTime: "", penalty: "0.00", splitTimes: {} },
-        [field]: formattedValue,
+        [field]: sanitized,
       };
-      // Validate on change
       validateTimeEntry(itemId, newEntry);
       return {
         ...prev,
@@ -660,29 +652,55 @@ export function CompetitionDayDetailPage() {
     });
   };
 
+  const handleTimeBlur = (itemId: string, field: "cleanTime" | "penalty") => {
+    setTimeEntries((prev) => {
+      const entry = prev[itemId];
+      if (!entry) return prev;
+      const raw = entry[field];
+      if (!raw || !raw.trim()) return prev;
+      const num = parseFloat(raw);
+      if (isNaN(num) || num < 0) return prev;
+      const formatted = roundToTwoDecimals(num).toFixed(2);
+      return {
+        ...prev,
+        [itemId]: { ...entry, [field]: formatted },
+      };
+    });
+  };
+
   const handleSplitTimeChange = (itemId: string, phaseId: string, value: string) => {
     setTimeEntries((prev) => {
-      // Format to 2 decimal places if it's a valid number
-      let formattedValue = value;
-      if (value && value.trim() && !isNaN(parseFloat(value))) {
-        const num = parseFloat(value);
-        if (!isNaN(num)) {
-          formattedValue = roundToTwoDecimals(num).toFixed(2);
-        }
-      }
-      
+      const sanitized = value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1");
       const newEntry = {
         ...prev[itemId] || { cleanTime: "", penalty: "0.00", splitTimes: {} },
         splitTimes: {
           ...(prev[itemId]?.splitTimes || {}),
-          [phaseId]: formattedValue,
+          [phaseId]: sanitized,
         },
       };
-      // Validate on change
       validateTimeEntry(itemId, newEntry);
       return {
         ...prev,
         [itemId]: newEntry,
+      };
+    });
+  };
+
+  const handleSplitTimeBlur = (itemId: string, phaseId: string) => {
+    setTimeEntries((prev) => {
+      const entry = prev[itemId];
+      if (!entry?.splitTimes) return prev;
+      const raw = entry.splitTimes[phaseId];
+      if (typeof raw !== "string" || !raw.trim()) return prev;
+      const num = parseFloat(raw);
+      if (isNaN(num) || num < 0) return prev;
+      const formatted = roundToTwoDecimals(num).toFixed(2);
+      return {
+        ...prev,
+        [itemId]: {
+          ...entry,
+          splitTimes: { ...entry.splitTimes, [phaseId]: formatted },
+        },
       };
     });
   };
@@ -3250,18 +3268,17 @@ export function CompetitionDayDetailPage() {
                           <div>
                             <label className="block text-xs text-gray-600 mb-1">Time (s) ⏱️</label>
                             <input
-                              type="number"
-                              step="0.01"
-                              min="0"
+                              type="text"
+                              inputMode="decimal"
                               value={timeEntries[item.id]?.cleanTime ?? (() => {
-                                // Calculate time from stored total time and penalty
                                 const total = item.totalTimeSeconds || 0;
                                 const penalty = item.penaltySeconds || 0;
                                 const time = roundToTwoDecimals(Math.max(0, total - penalty));
                                 return time > 0 ? time.toFixed(2) : "";
                               })()}
                               onChange={(e) => handleTimeChange(item.id, "cleanTime", e.target.value)}
-                              placeholder="100.0"
+                              onBlur={() => handleTimeBlur(item.id, "cleanTime")}
+                              placeholder="100.00"
                               className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                                 validationErrors[item.id]?.cleanTime ? "border-red-500" : "border-gray-300"
                               }`}
@@ -3273,12 +3290,12 @@ export function CompetitionDayDetailPage() {
                           <div>
                             <label className="block text-xs text-gray-600 mb-1">Penalty (s) ⚠️</label>
                             <input
-                              type="number"
-                              step="0.01"
-                              min="0"
+                              type="text"
+                              inputMode="decimal"
                               value={timeEntries[item.id]?.penalty ?? (item.penaltySeconds ? roundToTwoDecimals(item.penaltySeconds).toFixed(2) : "0.00")}
                               onChange={(e) => handleTimeChange(item.id, "penalty", e.target.value)}
-                              placeholder="0"
+                              onBlur={() => handleTimeBlur(item.id, "penalty")}
+                              placeholder="0.00"
                               className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                                 validationErrors[item.id]?.penalty ? "border-red-500" : "border-gray-300"
                               }`}
@@ -3360,11 +3377,11 @@ export function CompetitionDayDetailPage() {
                                           {phaseName} {phase.timeLimit && `(target: ${phase.timeLimit}s)`}
                                         </label>
                                         <input
-                                          type="number"
-                                          step="0.01"
-                                          min="0"
+                                          type="text"
+                                          inputMode="decimal"
                                           value={timeEntries[item.id]?.splitTimes?.[phaseId] || (item.splitTimes?.[phaseId] ? roundToTwoDecimals(item.splitTimes[phaseId]).toFixed(2) : "")}
                                           onChange={(e) => handleSplitTimeChange(item.id, phaseId, e.target.value)}
+                                          onBlur={() => handleSplitTimeBlur(item.id, phaseId)}
                                           placeholder="Optional"
                                           className={`w-full px-2 py-1.5 text-xs border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                                             validationErrors[item.id]?.splitTimes?.[phaseId] ? "border-red-500" : "border-gray-300"
@@ -3505,40 +3522,70 @@ export function CompetitionDayDetailPage() {
                                   <div>
                                     <label className="block text-xs text-gray-600 mb-1">Time (s) ⏱️</label>
                                     <input
-                                      type="number"
-                                      step="0.01"
-                                      min="0"
+                                      type="text"
+                                      inputMode="decimal"
                                       value={competitorForms[item.id]?.cleanTime || ""}
-                                      onChange={(e) =>
+                                      onChange={(e) => {
+                                        const v = e.target.value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1");
                                         setCompetitorForms((prev) => ({
                                           ...prev,
                                           [item.id]: { 
                                             ...(prev[item.id] || { teamName: "", cleanTime: "", penalty: "0", splitTimes: {}, notes: "" }),
-                                            cleanTime: e.target.value 
+                                            cleanTime: v 
                                           },
-                                        }))
-                                      }
-                                      placeholder="100.0"
+                                        }));
+                                      }}
+                                      onBlur={() => {
+                                        setCompetitorForms((prev) => {
+                                          const raw = prev[item.id]?.cleanTime;
+                                          if (!raw || !raw.trim()) return prev;
+                                          const num = parseFloat(raw);
+                                          if (isNaN(num) || num < 0) return prev;
+                                          return {
+                                            ...prev,
+                                            [item.id]: { 
+                                              ...(prev[item.id] || { teamName: "", cleanTime: "", penalty: "0", splitTimes: {}, notes: "" }),
+                                              cleanTime: roundToTwoDecimals(num).toFixed(2)
+                                            },
+                                          };
+                                        });
+                                      }}
+                                      placeholder="100.00"
                                       className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
                                     />
                                   </div>
                                   <div>
                                     <label className="block text-xs text-gray-600 mb-1">Penalty (s) ⚠️</label>
                                     <input
-                                      type="number"
-                                      step="0.01"
-                                      min="0"
+                                      type="text"
+                                      inputMode="decimal"
                                       value={competitorForms[item.id]?.penalty || "0.00"}
-                                      onChange={(e) =>
+                                      onChange={(e) => {
+                                        const v = e.target.value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1");
                                         setCompetitorForms((prev) => ({
                                           ...prev,
                                           [item.id]: { 
                                             ...(prev[item.id] || { teamName: "", cleanTime: "", penalty: "0", splitTimes: {}, notes: "" }),
-                                            penalty: e.target.value 
+                                            penalty: v 
                                           },
-                                        }))
-                                      }
-                                      placeholder="0"
+                                        }));
+                                      }}
+                                      onBlur={() => {
+                                        setCompetitorForms((prev) => {
+                                          const raw = prev[item.id]?.penalty;
+                                          if (!raw || !raw.trim()) return prev;
+                                          const num = parseFloat(raw);
+                                          if (isNaN(num) || num < 0) return prev;
+                                          return {
+                                            ...prev,
+                                            [item.id]: { 
+                                              ...(prev[item.id] || { teamName: "", cleanTime: "", penalty: "0", splitTimes: {}, notes: "" }),
+                                              penalty: roundToTwoDecimals(num).toFixed(2)
+                                            },
+                                          };
+                                        });
+                                      }}
+                                      placeholder="0.00"
                                       className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
                                     />
                                   </div>
@@ -3568,26 +3615,43 @@ export function CompetitionDayDetailPage() {
                                           <div key={phaseId}>
                                             <label className="block text-xs text-gray-600 mb-1">{phase.name || `Phase ${idx + 1}`}</label>
                                             <input
-                                              type="number"
-                                              step="0.01"
-                                              min="0"
+                                              type="text"
+                                              inputMode="decimal"
                                               value={competitorForms[item.id]?.splitTimes?.[phaseId] || (() => {
-                                                // Format existing split time if available
                                                 const splitTime = item.competitorTimes?.find(c => c.splitTimes?.[phaseId])?.splitTimes?.[phaseId];
                                                 return splitTime ? roundToTwoDecimals(splitTime).toFixed(2) : "";
                                               })()}
-                                              onChange={(e) =>
+                                              onChange={(e) => {
+                                                const v = e.target.value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1");
                                                 setCompetitorForms((prev) => ({
                                                   ...prev,
                                                   [item.id]: {
                                                     ...prev[item.id],
                                                     splitTimes: {
                                                       ...prev[item.id]?.splitTimes,
-                                                      [phaseId]: e.target.value,
+                                                      [phaseId]: v,
                                                     },
                                                   },
-                                                }))
-                                              }
+                                                }));
+                                              }}
+                                              onBlur={() => {
+                                                setCompetitorForms((prev) => {
+                                                  const raw = prev[item.id]?.splitTimes?.[phaseId];
+                                                  if (typeof raw !== "string" || !raw.trim()) return prev;
+                                                  const num = parseFloat(raw);
+                                                  if (isNaN(num) || num < 0) return prev;
+                                                  return {
+                                                    ...prev,
+                                                    [item.id]: {
+                                                      ...prev[item.id],
+                                                      splitTimes: {
+                                                        ...prev[item.id]?.splitTimes,
+                                                        [phaseId]: roundToTwoDecimals(num).toFixed(2),
+                                                      },
+                                                    },
+                                                  };
+                                                });
+                                              }}
                                               placeholder="Optional"
                                               className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded"
                                             />
