@@ -1,9 +1,27 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { execSync } from "child_process";
+
+function getBuildInfo() {
+  const buildTime = new Date().toISOString();
+  let gitSha = "";
+  try {
+    gitSha = execSync("git rev-parse --short HEAD", { encoding: "utf-8" }).trim();
+  } catch {
+    gitSha = "dev";
+  }
+  return { buildTime, gitSha };
+}
+
+const { buildTime, gitSha } = getBuildInfo();
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    __BUILD_TIME__: JSON.stringify(buildTime),
+    __GIT_SHA__: JSON.stringify(gitSha),
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

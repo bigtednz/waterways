@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import { SupportModal } from "../components/SupportModal";
+import { getBuildVersion } from "../lib/buildInfo";
 
 export function LandingPage() {
   const [supportModalOpen, setSupportModalOpen] = useState(false);
@@ -86,6 +87,9 @@ export function LandingPage() {
         {/* Footer */}
         <footer className="mt-12 text-center text-gray-600 text-sm">
           <p>© {new Date().getFullYear()} Waterways - Big Teds Sports Analytics Platform</p>
+          <p className="mt-1 text-gray-500" title="Build time and git commit">
+            {getBuildVersion()}
+          </p>
         </footer>
       </div>
 
