@@ -62,9 +62,12 @@ export function DashboardPage() {
     drivers: true,
   });
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [seasonsError, setSeasonsError] = useState<string | null>(null);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
 
   // Load seasons first, then set default season
   useEffect(() => {
+    setSeasonsError(null);
     api
       .get("/seasons")
       .then((res) => {
@@ -78,6 +81,7 @@ export function DashboardPage() {
       })
       .catch((err) => {
         console.error("Failed to load seasons:", err);
+        setSeasonsError("Couldn't load seasons. Please try again.");
       })
       .finally(() => {
         setLoading((prev) => ({ ...prev, seasons: false }));
@@ -122,6 +126,7 @@ export function DashboardPage() {
 
     const seasonParam = selectedSeasonId ? `?seasonId=${selectedSeasonId}` : "";
 
+    setAnalyticsError(null);
     Promise.allSettled([
       api
         .get(`/analytics/competition-trends${seasonParam}`)
@@ -129,6 +134,7 @@ export function DashboardPage() {
         .catch((err) => {
           console.error("Failed to load competition trends:", err);
           setCompetitionTrends([]);
+          setAnalyticsError("Couldn't load dashboard data. Please try again.");
         }),
       api
         .get(`/analytics/drivers${seasonParam}`)
@@ -136,6 +142,7 @@ export function DashboardPage() {
         .catch((err) => {
           console.error("Failed to load drivers:", err);
           setDrivers([]);
+          setAnalyticsError("Couldn't load dashboard data. Please try again.");
         }),
     ]).finally(() => {
       setLoading((prev) => ({ ...prev, trends: false, drivers: false }));
@@ -284,12 +291,40 @@ export function DashboardPage() {
         </Link>
       </div>
 
-      {/* Performance Alerts */}
-      {alerts.length > 0 && (
-        <div className="space-y-2">
+      {/* Error banners */}
+      {seasonsError && (
+        <div role="alert" className="p-4 rounded-lg border-l-4 bg-red-50 border-red-500 text-red-800">
+          <p className="text-sm font-medium">{seasonsError}</p>
+          <Link to="/app/competitions" className="text-sm underline mt-1 inline-block">Go to Competitions</Link>
+        </div>
+      )}
+      {analyticsError && !seasonsError && (
+        <div role="alert" className="p-4 rounded-lg border-l-4 bg-amber-50 border-amber-500 text-amber-800">
+          <p className="text-sm font-medium">{analyticsError}</p>
+        </div>
+      )}
+
+      {/* No seasons empty state */}
+      {!loading.seasons && seasons.length === 0 && !seasonsError && (
+        <div className="bg-white rounded-lg shadow-lg p-8 text-center border border-gray-200">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">No seasons yet</h2>
+          <p className="text-gray-600 mb-4">Create a season and add competitions to see diagnostics and trends.</p>
+          <Link
+            to="/app/competitions"
+            className="inline-flex px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Go to Competitions
+          </Link>
+        </div>
+      )}
+
+      {/* Performance Alerts - only when we have seasons */}
+      {(loading.seasons || seasons.length > 0) && alerts.length > 0 && (
+        <div className="space-y-2" role="alert" aria-live="polite">
           {alerts.map((alert, idx) => (
             <div
               key={idx}
+              role="alert"
               className={`p-4 rounded-lg border-l-4 ${
                 alert.type === "critical"
                   ? "bg-red-50 border-red-500 text-red-800"
@@ -309,14 +344,17 @@ export function DashboardPage() {
         </div>
       )}
 
+      {(loading.seasons || seasons.length > 0) && (
+        <>
       {/* Controls: Season & Scenario Selectors */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {!loading.seasons && seasons.length > 0 && (
           <div className="bg-white rounded-lg shadow p-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="dashboard-season-scope" className="block text-sm font-medium text-gray-700 mb-2">
               Season Scope
             </label>
             <select
+              id="dashboard-season-scope"
               value={selectedSeasonId || ""}
               onChange={(e) => setSelectedSeasonId(e.target.value || null)}
               className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
@@ -335,13 +373,15 @@ export function DashboardPage() {
 
         {scenarios.length > 0 && (
           <div className="bg-white rounded-lg shadow p-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="dashboard-scenario" className="block text-sm font-medium text-gray-700 mb-2">
               Scenario Simulation (What-If)
             </label>
             <select
+              id="dashboard-scenario"
               value={selectedScenarioId || ""}
               onChange={(e) => setSelectedScenarioId(e.target.value || null)}
               className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500"
+              aria-describedby="dashboard-scenario-hint"
             >
               <option value="">Baseline (No Scenario)</option>
               {scenarios.map((scenario) => (
@@ -350,11 +390,9 @@ export function DashboardPage() {
                 </option>
               ))}
             </select>
-            {selectedScenarioId && (
-              <p className="text-xs text-gray-500 mt-1">
-                Comparing baseline vs scenario performance
-              </p>
-            )}
+            <p id="dashboard-scenario-hint" className="text-xs text-gray-500 mt-1">
+              {selectedScenarioId ? "Comparing baseline vs scenario performance" : "Compare performance if you change variables"}
+            </p>
           </div>
         )}
       </div>
@@ -373,7 +411,7 @@ export function DashboardPage() {
               to="#goals"
               className="text-sm text-purple-600 hover:text-purple-800 font-medium"
             >
-              View All →
+              Manage goals below →
             </Link>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -434,7 +472,7 @@ export function DashboardPage() {
 
       {/* Performance Score & Quick Insights */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 p-6 rounded-lg shadow-lg border border-indigo-200">
+        <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 p-6 rounded-lg shadow-lg border border-indigo-200" aria-label={`Performance score ${Math.round(performanceScore)} out of 100`}>
           <h3 className="text-sm font-medium text-indigo-700">Performance Score</h3>
           <div className="mt-4">
             <div className="flex items-baseline">
@@ -716,7 +754,7 @@ export function DashboardPage() {
                 {formatTime(recoverableTimeEstimate)}
               </p>
               <p className="text-xs text-purple-600 mt-1">
-                Estimate: penalties + 50% variance
+                Estimated time you could gain by reducing penalties and variance
               </p>
             </>
           ) : (
@@ -894,10 +932,10 @@ export function DashboardPage() {
 
       {/* Quick Actions */}
       <div className="bg-white rounded-lg shadow-lg p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Quick Diagnostics</h2>
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Quick links</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Link
-            to={`/analysis?mode=run&runType=${drivers.length > 0 ? drivers[0].runTypeCode : "A1"}`}
+            to={`/app/analysis?mode=run&runType=${drivers.length > 0 ? drivers[0].runTypeCode : "A1"}`}
             className="p-4 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors"
           >
             <div className="text-blue-700 font-semibold text-sm">Run Diagnostics</div>
@@ -906,7 +944,7 @@ export function DashboardPage() {
             </div>
           </Link>
           <Link
-            to="/analysis?mode=competition"
+            to="/app/analysis?mode=competition"
             className="p-4 bg-green-50 hover:bg-green-100 rounded-lg border border-green-200 transition-colors"
           >
             <div className="text-green-700 font-semibold text-sm">Trend Analysis</div>
@@ -923,7 +961,7 @@ export function DashboardPage() {
           )}
           {selectedSeasonId && (
             <Link
-              to={`/competitions?seasonId=${selectedSeasonId}`}
+              to={`/app/competitions?seasonId=${selectedSeasonId}`}
               className="p-4 bg-purple-50 hover:bg-purple-100 rounded-lg border border-purple-200 transition-colors"
             >
               <div className="text-purple-700 font-semibold text-sm">Season Details</div>
@@ -950,7 +988,7 @@ export function DashboardPage() {
           {recentCompetitions.length === 0 ? (
             <div className="p-6 text-center text-gray-500">
               No competitions yet.{" "}
-              <Link to="/competitions" className="text-blue-600 hover:underline">
+              <Link to="/app/competitions/new" className="text-blue-600 hover:underline">
                 Create one
               </Link>
             </div>
@@ -958,7 +996,7 @@ export function DashboardPage() {
             recentCompetitions.map((comp) => (
               <Link
                 key={comp.id}
-                to={`/competitions/${comp.id}`}
+                to={`/app/competitions/${comp.id}`}
                 className="block p-6 hover:bg-gray-50"
               >
                 <div className="flex justify-between items-center">
@@ -1041,6 +1079,8 @@ export function DashboardPage() {
           }}
         />
       </div>
+        </>
+      )}
     </div>
   );
 }

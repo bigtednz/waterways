@@ -9,7 +9,6 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "npm run build:packages && npm run build:apps",
-    "build:manual": "npm run build:packages && npm run build:apps",
     "build:fix-esbuild": "node node_modules/vite/node_modules/esbuild/install.js",
     "build:packages": "npm run build --workspace=@waterways/shared && npm run build --workspace=@waterways/db && npm run build --workspace=@waterways/analytics-engine",
     "build:apps": "npm run build --workspace=@waterways/api && npm run build --workspace=@waterways/web",

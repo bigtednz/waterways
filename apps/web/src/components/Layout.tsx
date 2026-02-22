@@ -1,6 +1,7 @@
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { auth, User } from "../lib/auth";
+import { getBuildVersion } from "../lib/buildInfo";
 import { SupportModal } from "./SupportModal";
 import { ToastContainer } from "./Toast";
 
@@ -78,7 +79,7 @@ export function Layout() {
 
         {/* Sidebar */}
         <aside
-          className={`fixed xl:static inset-y-0 left-0 z-50 w-56 xl:w-64 bg-gray-900 text-white transform ${
+          className={`fixed xl:static inset-y-0 left-0 z-50 w-56 xl:w-64 bg-gray-900 text-white transform flex flex-col ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
           } xl:translate-x-0 transition-transform duration-300 ease-in-out`}
         >
@@ -125,6 +126,11 @@ export function Layout() {
               </Link>
             )}
           </nav>
+          <div className="mt-auto px-6 py-4 border-t border-gray-800">
+            <p className="text-xs text-gray-500" title="Build time and git commit">
+              {getBuildVersion()}
+            </p>
+          </div>
         </aside>
 
         {/* Main content */}
