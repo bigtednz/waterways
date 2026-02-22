@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "@waterways/db";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@waterways/db";
 import {
   competitionDaySchema,
   runQueueItemSchema,

@@ -64,6 +64,11 @@ export function DashboardPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [seasonsError, setSeasonsError] = useState<string | null>(null);
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  const [advancedKpis, setAdvancedKpis] = useState<{
+    cleanlinessPercent: number | null;
+    penaltyRiskIndex: number | null;
+    splitBottleneck: "Setup" | "WaterOn" | null;
+  }>({ cleanlinessPercent: null, penaltyRiskIndex: null, splitBottleneck: null });
 
   // Load seasons first, then set default season
   useEffect(() => {
@@ -144,6 +149,10 @@ export function DashboardPage() {
           setDrivers([]);
           setAnalyticsError("Couldn't load dashboard data. Please try again.");
         }),
+      api
+        .get(`/analytics/advanced-kpis${seasonParam}`)
+        .then((res) => setAdvancedKpis(res.data))
+        .catch(() => setAdvancedKpis({ cleanlinessPercent: null, penaltyRiskIndex: null, splitBottleneck: null })),
     ]).finally(() => {
       setLoading((prev) => ({ ...prev, trends: false, drivers: false }));
     });
@@ -651,6 +660,49 @@ export function DashboardPage() {
             )}
           </div>
         )}
+      </div>
+
+      {/* Advanced analytics: Cleanliness KPI, Penalty Risk Index, Split Bottleneck */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-gradient-to-br from-teal-50 to-teal-100 p-6 rounded-lg shadow-lg border border-teal-200" aria-label={advancedKpis.cleanlinessPercent != null ? `Clean runs ${advancedKpis.cleanlinessPercent}% in last 14 days` : "Cleanliness KPI loading or no data"}>
+          <h3 className="text-sm font-medium text-teal-700">Cleanliness KPI</h3>
+          {loading.trends ? (
+            <div className="text-sm text-gray-500 mt-2">Loading...</div>
+          ) : advancedKpis.cleanlinessPercent != null ? (
+            <>
+              <p className="text-3xl font-bold text-teal-900 mt-2">{advancedKpis.cleanlinessPercent}%</p>
+              <p className="text-xs text-teal-600 mt-1">CLEAN runs (last 14 days)</p>
+            </>
+          ) : (
+            <p className="text-lg text-gray-400 mt-2">—</p>
+          )}
+        </div>
+        <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-lg shadow-lg border border-orange-200" aria-label={advancedKpis.penaltyRiskIndex != null ? `Penalty risk index ${advancedKpis.penaltyRiskIndex}` : "Penalty risk index loading or no data"}>
+          <h3 className="text-sm font-medium text-orange-700">Penalty Risk Index</h3>
+          {loading.trends ? (
+            <div className="text-sm text-gray-500 mt-2">Loading...</div>
+          ) : advancedKpis.penaltyRiskIndex != null ? (
+            <>
+              <p className="text-3xl font-bold text-orange-900 mt-2">{advancedKpis.penaltyRiskIndex}</p>
+              <p className="text-xs text-orange-600 mt-1">Weighted avg (MINOR=1, MAJOR=3, RISK=5)</p>
+            </>
+          ) : (
+            <p className="text-lg text-gray-400 mt-2">—</p>
+          )}
+        </div>
+        <div className="bg-gradient-to-br from-cyan-50 to-cyan-100 p-6 rounded-lg shadow-lg border border-cyan-200" aria-label={advancedKpis.splitBottleneck != null ? `Split bottleneck: ${advancedKpis.splitBottleneck}` : "Split bottleneck loading or no data"}>
+          <h3 className="text-sm font-medium text-cyan-700">Split Bottleneck</h3>
+          {loading.trends ? (
+            <div className="text-sm text-gray-500 mt-2">Loading...</div>
+          ) : advancedKpis.splitBottleneck != null ? (
+            <>
+              <p className="text-3xl font-bold text-cyan-900 mt-2">{advancedKpis.splitBottleneck}</p>
+              <p className="text-xs text-cyan-600 mt-1">Highest median (last 10 runs)</p>
+            </>
+          ) : (
+            <p className="text-lg text-gray-400 mt-2">—</p>
+          )}
+        </div>
       </div>
 
       {/* Scenario Impact Comparison */}

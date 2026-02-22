@@ -66,16 +66,39 @@ runResultsRouter.post(
   async (req: AuthRequest, res, next) => {
     try {
       const data = runResultSchema.parse(req.body);
+      const { faultTagIds, ...runData } = data;
+
       const runResult = await prisma.runResult.create({
         data: {
-          ...data,
+          ...runData,
           createdById: req.userId!,
         },
         include: {
           runType: true,
           competition: true,
+          runFaults: { include: { tag: true } },
         },
       });
+
+      if (faultTagIds?.length) {
+        await prisma.runFault.createMany({
+          data: faultTagIds.map((tagId) => ({
+            runId: runResult.id,
+            tagId,
+          })),
+          skipDuplicates: true,
+        });
+        const withFaults = await prisma.runResult.findUnique({
+          where: { id: runResult.id },
+          include: {
+            runType: true,
+            competition: true,
+            runFaults: { include: { tag: true } },
+          },
+        });
+        return res.status(201).json(withFaults ?? runResult);
+      }
+
       res.status(201).json(runResult);
     } catch (error) {
       next(error);

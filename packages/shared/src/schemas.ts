@@ -26,12 +26,18 @@ export const competitionSchema = z.object({
   notes: z.string().optional(),
 });
 
+export const cleanlinessRatingSchema = z.enum(["CLEAN", "MINOR", "MAJOR", "RISK"]);
+
 export const runResultSchema = z.object({
   competitionId: z.string(),
   runTypeId: z.string(),
   totalTimeSeconds: z.number().positive(),
   penaltySeconds: z.number().nonnegative().default(0),
   notes: z.string().optional(),
+  splitSetupSeconds: z.number().int().nonnegative().optional(),
+  splitWaterOnSeconds: z.number().int().nonnegative().optional(),
+  cleanlinessRating: cleanlinessRatingSchema.optional(),
+  faultTagIds: z.array(z.string().cuid()).optional(),
 });
 
 export const bulkRunResultSchema = z.object({

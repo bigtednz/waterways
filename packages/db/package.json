@@ -13,21 +13,25 @@
   "scripts": {
     "build": "tsc",
     "generate": "prisma generate",
-    "migrate": "prisma migrate dev",
+    "migrate": "prisma generate && prisma migrate dev",
     "migrate:resolve": "prisma migrate resolve --rolled-back 20240124000000_init || true",
     "migrate:deploy": "npm run migrate:resolve && prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
     "studio": "prisma studio"
   },
   "dependencies": {
-    "@prisma/client": "^5.9.1",
-    "bcryptjs": "^2.4.3"
+    "@prisma/adapter-pg": "^7.4.0",
+    "@prisma/client": "^7.4.1",
+    "bcryptjs": "^2.4.3",
+    "pg": "^8.13.0"
   },
   "devDependencies": {
-    "prisma": "^5.9.1",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/pg": "^8.11.0",
+    "dotenv": "^16.4.5",
+    "prisma": "^7.4.1",
     "tsx": "^4.7.1",
-    "typescript": "^5.3.3",
-    "@types/bcryptjs": "^2.4.6"
+    "typescript": "^5.3.3"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

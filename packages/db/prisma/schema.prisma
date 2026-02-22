@@ -1,16 +1,25 @@
 generator client {
-  provider = "prisma-client-js"
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  generatedFileExtension  = "ts"
+  importFileExtension     = "ts"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 enum UserRole {
   ADMIN
   COACH
   VIEWER
+}
+
+enum CleanlinessRating {
+  CLEAN
+  MINOR
+  MAJOR
+  RISK
 }
 
 model User {
@@ -80,26 +89,54 @@ model RunType {
 }
 
 model RunResult {
-  id              String        @id @default(cuid())
-  competitionId   String
-  runTypeId       String
-  totalTimeSeconds Float
-  penaltySeconds  Float         @default(0)
-  notes           String?
-  createdById     String
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id                   String             @id @default(cuid())
+  competitionId        String
+  runTypeId            String
+  totalTimeSeconds     Float
+  penaltySeconds       Float              @default(0)
+  notes                String?
+  createdById          String
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  splitSetupSeconds    Int?
+  splitWaterOnSeconds  Int?
+  cleanlinessRating    CleanlinessRating?
 
   competition     Competition   @relation(fields: [competitionId], references: [id], onDelete: Cascade)
   runType         RunType       @relation(fields: [runTypeId], references: [id])
   createdBy       User          @relation(fields: [createdById], references: [id])
   penalties       RunPenalty[]
   prescriptions   Prescription[]
+  runFaults       RunFault[]
 
   @@index([competitionId])
   @@index([runTypeId])
   @@index([createdAt])
   @@map("run_results")
+}
+
+model FaultTag {
+  id        String     @id @default(cuid())
+  tagGroup  String
+  tagLabel  String
+  runFaults RunFault[]
+  createdAt DateTime   @default(now())
+
+  @@map("fault_tags")
+}
+
+model RunFault {
+  id        String   @id @default(cuid())
+  runId     String
+  tagId     String
+  createdAt DateTime @default(now())
+
+  run RunResult @relation(fields: [runId], references: [id], onDelete: Cascade)
+  tag FaultTag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([tagId])
+  @@map("run_faults")
 }
 
 model RunSpec {

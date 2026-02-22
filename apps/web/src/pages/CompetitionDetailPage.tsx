@@ -1,9 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../lib/api";
 import { formatDate, formatTime } from "../lib/utils";
 import type { CompetitionTrend } from "@waterways/shared";
 import { PenaltyInterpreter } from "../components/PenaltyInterpreter";
+
+type CleanlinessRating = "CLEAN" | "MINOR" | "MAJOR" | "RISK";
+
+interface FaultTag {
+  id: string;
+  tagGroup: string;
+  tagLabel: string;
+}
 
 interface RunResult {
   id: string;
@@ -31,6 +39,19 @@ export function CompetitionDetailPage() {
   const [quickEntry, setQuickEntry] = useState<Record<string, any>>({});
   const [competitionTrends, setCompetitionTrends] = useState<CompetitionTrend[]>([]);
   const [loadingTrends, setLoadingTrends] = useState(true);
+  // Session logging (timer + splits + cleanliness + fault tags)
+  const [faultTags, setFaultTags] = useState<FaultTag[]>([]);
+  const [logRunTypeCode, setLogRunTypeCode] = useState<string>("");
+  const [timerStartedAt, setTimerStartedAt] = useState<number | null>(null);
+  const [splitSetupSeconds, setSplitSetupSeconds] = useState<number | null>(null);
+  const [splitWaterOnSeconds, setSplitWaterOnSeconds] = useState<number | null>(null);
+  const [finishedTotalSeconds, setFinishedTotalSeconds] = useState<number | null>(null);
+  const [cleanlinessRating, setCleanlinessRating] = useState<CleanlinessRating | null>(null);
+  const [selectedFaultTagIds, setSelectedFaultTagIds] = useState<string[]>([]);
+  const [logPenaltySeconds, setLogPenaltySeconds] = useState(0);
+  const [logNotes, setLogNotes] = useState("");
+  const [logSubmitting, setLogSubmitting] = useState(false);
+  const [elapsedDisplay, setElapsedDisplay] = useState(0);
 
   // Redirect if "new" is passed as id (shouldn't happen with correct routing, but safety check)
   useEffect(() => {
@@ -46,10 +67,24 @@ export function CompetitionDetailPage() {
     Promise.all([
       api.get(`/competitions/${id}`).then((res) => setCompetition(res.data)),
       api.get("/run-types").then((res) => setRunTypes(res.data)),
+      api.get("/fault-tags").then((res) => setFaultTags(res.data || [])).catch(() => setFaultTags([])),
     ])
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    if (runTypes.length > 0 && !logRunTypeCode) setLogRunTypeCode(runTypes[0].code);
+  }, [runTypes, logRunTypeCode]);
+
+  // Timer tick for session logging
+  useEffect(() => {
+    if (timerStartedAt === null) return;
+    const interval = setInterval(() => {
+      setElapsedDisplay(Math.floor((Date.now() - timerStartedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [timerStartedAt]);
 
   // Load competition trends for comparison
   useEffect(() => {
@@ -164,6 +199,87 @@ export function CompetitionDetailPage() {
       alert("Failed to delete run. Please try again.");
     }
   };
+
+  const startSessionTimer = useCallback(() => {
+    setTimerStartedAt(Date.now());
+    setElapsedDisplay(0);
+    setSplitSetupSeconds(null);
+    setSplitWaterOnSeconds(null);
+    setFinishedTotalSeconds(null);
+    setCleanlinessRating(null);
+    setSelectedFaultTagIds([]);
+  }, []);
+
+  const captureSplitSetup = useCallback(() => {
+    if (timerStartedAt === null) return;
+    const elapsed = Math.floor((Date.now() - timerStartedAt) / 1000);
+    setSplitSetupSeconds(elapsed);
+  }, [timerStartedAt]);
+
+  const captureSplitWaterOn = useCallback(() => {
+    if (timerStartedAt === null) return;
+    const elapsed = Math.floor((Date.now() - timerStartedAt) / 1000);
+    setSplitWaterOnSeconds(elapsed);
+  }, [timerStartedAt]);
+
+  const finishSessionTimer = useCallback(() => {
+    if (timerStartedAt === null) return;
+    const total = Math.floor((Date.now() - timerStartedAt) / 1000);
+    setFinishedTotalSeconds(total);
+    setTimerStartedAt(null);
+  }, [timerStartedAt]);
+
+  const toggleFaultTag = useCallback((tagId: string) => {
+    setSelectedFaultTagIds((prev) =>
+      prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]
+    );
+  }, []);
+
+  const resetSessionLog = useCallback(() => {
+    setTimerStartedAt(null);
+    setSplitSetupSeconds(null);
+    setSplitWaterOnSeconds(null);
+    setFinishedTotalSeconds(null);
+    setCleanlinessRating(null);
+    setSelectedFaultTagIds([]);
+    setLogPenaltySeconds(0);
+    setLogNotes("");
+    setElapsedDisplay(0);
+  }, []);
+
+  const submitSessionLog = async () => {
+    if (!id || !competition || finishedTotalSeconds === null) return;
+    const runType = runTypes.find((rt) => rt.code === logRunTypeCode);
+    if (!runType) return;
+    setLogSubmitting(true);
+    try {
+      await api.post("/run-results", {
+        competitionId: id,
+        runTypeId: runType.id,
+        totalTimeSeconds: finishedTotalSeconds,
+        penaltySeconds: logPenaltySeconds,
+        notes: logNotes.trim() || undefined,
+        splitSetupSeconds: splitSetupSeconds ?? undefined,
+        splitWaterOnSeconds: splitWaterOnSeconds ?? undefined,
+        cleanlinessRating: cleanlinessRating ?? undefined,
+        faultTagIds: selectedFaultTagIds.length > 0 ? selectedFaultTagIds : undefined,
+      });
+      resetSessionLog();
+      const res = await api.get(`/competitions/${id}`);
+      setCompetition(res.data);
+    } catch (err: any) {
+      console.error("Failed to save run:", err);
+      alert(err.response?.data?.error || "Failed to save run. Please try again.");
+    } finally {
+      setLogSubmitting(false);
+    }
+  };
+
+  const FAULT_GROUP_ORDER = ["Orders", "Couplings", "Hydrant", "Suction", "Pump", "General"];
+  const faultTagsByGroup = FAULT_GROUP_ORDER.map((group) => ({
+    group,
+    tags: faultTags.filter((t) => t.tagGroup === group),
+  })).filter((g) => g.tags.length > 0);
 
   if (loading) {
     return <div className="text-center py-8">Loading...</div>;
@@ -478,6 +594,185 @@ export function CompetitionDetailPage() {
           >
             Save All Runs
           </button>
+        </div>
+      </div>
+
+      {/* Session logging: timer, splits, cleanliness, fault tags */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="p-6 border-b">
+          <h2 className="text-lg font-semibold text-gray-900">Log run (with timer &amp; faults)</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Use the timer splits, set cleanliness, tag faults, then submit. Existing quick entry above is unchanged.
+          </p>
+        </div>
+        <div className="p-6 space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Run type</label>
+            <select
+              value={logRunTypeCode}
+              onChange={(e) => setLogRunTypeCode(e.target.value)}
+              disabled={timerStartedAt !== null}
+              className="w-full sm:w-auto min-w-[120px] px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            >
+              {runTypes.map((rt) => (
+                <option key={rt.code} value={rt.code}>{rt.code} - {rt.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Timer section */}
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-gray-700">Timer</p>
+            {timerStartedAt === null && finishedTotalSeconds === null && (
+              <button
+                type="button"
+                onClick={startSessionTimer}
+                className="w-full py-3 px-4 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 touch-manipulation"
+              >
+                Start timer
+              </button>
+            )}
+            {(timerStartedAt !== null || (finishedTotalSeconds !== null && !logSubmitting)) && (
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="text-2xl font-mono font-bold text-gray-900 tabular-nums min-w-[80px]">
+                  {timerStartedAt !== null
+                    ? `${Math.floor(elapsedDisplay / 60)}:${String(elapsedDisplay % 60).padStart(2, "0")}`
+                    : finishedTotalSeconds !== null
+                    ? `${Math.floor(finishedTotalSeconds / 60)}:${String(finishedTotalSeconds % 60).padStart(2, "0")}`
+                    : "0:00"}
+                </div>
+                {timerStartedAt !== null && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={captureSplitSetup}
+                      className="flex-1 min-w-[120px] py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 touch-manipulation"
+                    >
+                      Split: Setup
+                    </button>
+                    <button
+                      type="button"
+                      onClick={captureSplitWaterOn}
+                      className="flex-1 min-w-[120px] py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 touch-manipulation"
+                    >
+                      Split: Water On
+                    </button>
+                    <button
+                      type="button"
+                      onClick={finishSessionTimer}
+                      className="flex-1 min-w-[100px] py-3 px-4 bg-amber-600 text-white rounded-lg font-semibold hover:bg-amber-700 touch-manipulation"
+                    >
+                      Finish
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+            {splitSetupSeconds !== null && (
+              <p className="text-xs text-gray-500">Setup split: {splitSetupSeconds}s</p>
+            )}
+            {splitWaterOnSeconds !== null && (
+              <p className="text-xs text-gray-500">Water on split: {splitWaterOnSeconds}s</p>
+            )}
+          </div>
+
+          {/* Cleanliness selector */}
+          {finishedTotalSeconds !== null && (
+            <>
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-2">Cleanliness</p>
+                <div className="flex flex-wrap gap-2" role="group" aria-label="Cleanliness rating">
+                  {(["CLEAN", "MINOR", "MAJOR", "RISK"] as const).map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setCleanlinessRating(r)}
+                      className={`px-4 py-2 rounded-lg font-medium touch-manipulation ${
+                        cleanlinessRating === r
+                          ? "bg-indigo-600 text-white"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      }`}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Fault tagging panel */}
+              {faultTagsByGroup.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-gray-700 mb-2">Fault tags (multi-select)</p>
+                  <div className="space-y-4">
+                    {faultTagsByGroup.map(({ group, tags }) => (
+                      <div key={group}>
+                        <p className="text-xs font-semibold text-gray-500 uppercase mb-2">{group}</p>
+                        <div className="flex flex-wrap gap-2">
+                          {tags.map((tag) => (
+                            <button
+                              key={tag.id}
+                              type="button"
+                              onClick={() => toggleFaultTag(tag.id)}
+                              className={`px-3 py-1.5 rounded-lg text-sm font-medium touch-manipulation ${
+                                selectedFaultTagIds.includes(tag.id)
+                                  ? "bg-red-600 text-white"
+                                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                              }`}
+                            >
+                              {tag.tagLabel}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Penalty (s)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min={0}
+                    value={logPenaltySeconds}
+                    onChange={(e) => setLogPenaltySeconds(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                  <input
+                    type="text"
+                    value={logNotes}
+                    onChange={(e) => setLogNotes(e.target.value)}
+                    placeholder="Optional"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={submitSessionLog}
+                  disabled={logSubmitting}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 touch-manipulation"
+                >
+                  {logSubmitting ? "Saving…" : "Save run"}
+                </button>
+                <button
+                  type="button"
+                  onClick={resetSessionLog}
+                  disabled={logSubmitting}
+                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300 touch-manipulation"
+                >
+                  Reset
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

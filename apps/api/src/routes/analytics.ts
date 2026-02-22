@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "@waterways/db";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@waterways/db";
 import { authenticate, AuthRequest } from "../middleware/auth.js";
 import type {
   CompetitionTrend,
@@ -589,6 +589,69 @@ analyticsRouter.get("/validate-run", async (req, res, next) => {
         timeLimits: spec.timeLimits || null,
       },
       message: "No run result provided. Include runResultId to validate a specific run.",
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Advanced KPIs: cleanliness %, penalty risk index, split bottleneck
+ * Uses runs in last 14 days (for cleanliness and risk) and last 10 runs (for split bottleneck)
+ */
+analyticsRouter.get("/advanced-kpis", async (req, res, next) => {
+  try {
+    const seasonId = req.query.seasonId as string | undefined;
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+
+    const runResults = await prisma.runResult.findMany({
+      where: seasonId
+        ? { competition: { seasonId, date: { gte: fourteenDaysAgo } } }
+        : { competition: { date: { gte: fourteenDaysAgo } } },
+      include: { competition: true },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const withCleanliness = runResults.filter((r) => r.cleanlinessRating != null);
+    const cleanCount = withCleanliness.filter((r) => r.cleanlinessRating === "CLEAN").length;
+    const cleanlinessPercent =
+      withCleanliness.length > 0 ? Math.round((cleanCount / withCleanliness.length) * 100) : null;
+
+    const RISK_WEIGHTS: Record<string, number> = { MINOR: 1, MAJOR: 3, RISK: 5 };
+    let penaltyRiskIndex: number | null = null;
+    if (withCleanliness.length > 0) {
+      const total = withCleanliness.reduce((sum, r) => {
+        const w = r.cleanlinessRating ? RISK_WEIGHTS[r.cleanlinessRating] : 0;
+        return sum + w;
+      }, 0);
+      penaltyRiskIndex = Math.round((total / withCleanliness.length) * 10) / 10;
+    }
+
+    const withSplits = runResults.filter(
+      (r) =>
+        r.splitSetupSeconds != null &&
+        r.splitWaterOnSeconds != null &&
+        r.splitSetupSeconds >= 0 &&
+        r.splitWaterOnSeconds >= 0
+    );
+    const last10 = withSplits.slice(0, 10);
+    let splitBottleneck: "Setup" | "WaterOn" | null = null;
+    if (last10.length > 0) {
+      const median = (arr: number[]) => {
+        const s = [...arr].sort((a, b) => a - b);
+        const m = Math.floor(s.length / 2);
+        return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
+      };
+      const setupMed = median(last10.map((r) => r.splitSetupSeconds!));
+      const waterOnMed = median(last10.map((r) => r.splitWaterOnSeconds!));
+      splitBottleneck = setupMed >= waterOnMed ? "Setup" : "WaterOn";
+    }
+
+    res.json({
+      cleanlinessPercent,
+      penaltyRiskIndex,
+      splitBottleneck,
     });
   } catch (error) {
     next(error);
